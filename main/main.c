@@ -1,11 +1,3 @@
-/* BSD Socket API Example
-
-   This example code is in the Public Domain (or CC0 licensed, at your option.)
-
-   Unless required by applicable law or agreed to in writing, this
-   software is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
-   CONDITIONS OF ANY KIND, either express or implied.
-*/
 #include <string.h>
 #include <sys/param.h>
 #include <sys/time.h>
@@ -28,16 +20,17 @@
 #include <lwip/netdb.h>
 
 #define PORT 10000
+#define relayPin 18
 
 static const char *TAG = "example";
+
 bool relayOn = false;
 
 void changeGPIO(void){
     relayOn = !relayOn;
-    // ESP_LOGI(TAG, "TEST %d", relayOn);
 
-    gpio_set_direction(18, GPIO_MODE_OUTPUT);
-    gpio_set_level(18, relayOn);
+    gpio_set_direction(relayPin, GPIO_MODE_OUTPUT);
+    gpio_set_level(relayPin, relayOn);
 }
 
 void printTimeNow(void){
@@ -53,37 +46,9 @@ void printTimeNow(void){
     strftime(strftime_buf, sizeof(strftime_buf), "%c", &timeinfo);
     ESP_LOGI(TAG, "Time now : %s", strftime_buf);   
 }
-static void do_retransmit(const int sock)
-{
-    int len;
-    char rx_buffer[128];
 
-    do {
-        len = recv(sock, rx_buffer, sizeof(rx_buffer) - 1, 0);
-        if (len < 0) {
-            ESP_LOGE(TAG, "Error occurred during receiving: errno %d", errno);
-        } else if (len == 0) {
-            ESP_LOGW(TAG, "Connection closed");
-        } else {
-            rx_buffer[len] = 0; // Null-terminate whatever is received and treat it like a string
-            ESP_LOGI(TAG, "Received %d bytes: %s", len, rx_buffer);
-
-            // send() can return less bytes than supplied length.
-            // Walk-around for robust implementation. 
-            int to_write = len;
-            while (to_write > 0) {
-                int written = send(sock, rx_buffer + (len - to_write), to_write, 0);
-                if (written < 0) {
-                    ESP_LOGE(TAG, "Error occurred during sending: errno %d", errno);
-                }
-                to_write -= written;
-            }
-        }
-    } while (len > 0);
-}
-
+static void do_retransmit(const int sock);
 static void tcp_server_task(void *pvParameters);
-
 
 void app_main(void)
 {
@@ -102,9 +67,39 @@ void app_main(void)
     sntp_init();
 
     xTaskCreate(tcp_server_task, "tcp_server", 4096, (void*)AF_INET, 5, NULL);
-
 }
 
+static void do_retransmit(const int sock)
+{
+    int len;
+    char rx_buffer[128];
+
+    do {
+        len = recv(sock, rx_buffer, sizeof(rx_buffer) - 1, 0);
+        if (len < 0) {
+            ESP_LOGE(TAG, "Error occurred during receiving: errno %d", errno);
+        } else if (len == 0) {
+            ESP_LOGW(TAG, "Connection closed");
+        } else {
+            rx_buffer[len] = 0; // Null-terminate whatever is received and treat it like a string
+            ESP_LOGI(TAG, "Received %d bytes: %s", len, rx_buffer);
+
+            // send() can return less bytes than supplied length.
+            // Walk-around for robust implementation. 
+
+            rx_buffer[0] = 'z';
+
+            int to_write = len;
+            while (to_write > 0) {
+                int written = send(sock, rx_buffer + (len - to_write), to_write, 0);
+                if (written < 0) {
+                    ESP_LOGE(TAG, "Error occurred during sending: errno %d", errno);
+                }
+                to_write -= written;
+            }
+        }
+    } while (len > 0);
+}
 static void tcp_server_task(void *pvParameters)
 {
     char addr_str[128];
