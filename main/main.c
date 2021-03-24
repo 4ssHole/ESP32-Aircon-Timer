@@ -34,7 +34,7 @@ bool relayOn = false;
 
 void changeGPIO(void){
     relayOn = !relayOn;
-    ESP_LOGI(TAG, "TEST %d", relayOn);
+    // ESP_LOGI(TAG, "TEST %d", relayOn);
 
     gpio_set_direction(18, GPIO_MODE_OUTPUT);
     gpio_set_level(18, relayOn);
