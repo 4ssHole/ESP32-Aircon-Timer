@@ -33,18 +33,27 @@ void changeGPIO(void){
     gpio_set_level(relayPin, relayOn);
 }
 
+void waitForNTPSync(void){
+    while(time(NULL) <= 100){
+        ESP_LOGI(TAG, "Time now : %lu", time(NULL));
+        sleep(1);
+    }
+    ESP_LOGI(TAG, "Time now : %lu", time(NULL));
+}
+
 void printTimeNow(void){
-    time_t now;
-    char strftime_buf[64];
-    struct tm timeinfo;
+    // time_t now = time(NULL);
+    // char strftime_buf[64];
+    // struct tm timeinfo;
 
-    time(&now);
-    setenv("TZ", "GMT-8", 1);
-    tzset();
+    ESP_LOGI(TAG, "Time now : %lu", time(NULL));   
+    // time(&now);
+    // setenv("TZ", "GMT-8", 1);
+    // tzset();
 
-    localtime_r(&now, &timeinfo);
-    strftime(strftime_buf, sizeof(strftime_buf), "%c", &timeinfo);
-    ESP_LOGI(TAG, "Time now : %s", strftime_buf);   
+    // localtime_r(&now, &timeinfo);
+    // strftime(strftime_buf, sizeof(strftime_buf), "%c", &timeinfo);
+    // ESP_LOGI(TAG, "Time now : %s", strftime_buf);   
 }
 
 static void do_retransmit(const int sock);
@@ -66,6 +75,8 @@ void app_main(void)
     sntp_setservername(0, "pool.ntp.org");
     sntp_init();
 
+    waitForNTPSync();
+
     xTaskCreate(tcp_server_task, "tcp_server", 4096, (void*)AF_INET, 5, NULL);
 }
 
@@ -73,6 +84,9 @@ static void do_retransmit(const int sock)
 {
     int len;
     char rx_buffer[128];
+
+    char buffer[64] = {0};
+    itoa (time(NULL),buffer,10);
 
     do {
         len = recv(sock, rx_buffer, sizeof(rx_buffer) - 1, 0);
@@ -87,11 +101,10 @@ static void do_retransmit(const int sock)
             // send() can return less bytes than supplied length.
             // Walk-around for robust implementation. 
 
-            rx_buffer[0] = 'z';
-
             int to_write = len;
             while (to_write > 0) {
-                int written = send(sock, rx_buffer + (len - to_write), to_write, 0);
+                // int written = send(sock, rx_buffer + (len - to_write), to_write, 0);
+                int written = send(sock, &buffer, sizeof(buffer), 0);
                 if (written < 0) {
                     ESP_LOGE(TAG, "Error occurred during sending: errno %d", errno);
                 }
@@ -106,6 +119,8 @@ static void tcp_server_task(void *pvParameters)
     int addr_family = (int)pvParameters;
     int ip_protocol = 0;
     struct sockaddr_in6 dest_addr;
+
+ 
 
     if (addr_family == AF_INET) {
         struct sockaddr_in *dest_addr_ip4 = (struct sockaddr_in *)&dest_addr;

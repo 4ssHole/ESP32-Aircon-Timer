@@ -4,6 +4,7 @@
     "idf.flashType": "UART",
     "files.associations": {
         "xlocale": "c",
-        "*.inc": "c"
+        "*.inc": "c",
+        "gpio.h": "c"
     }
 }
