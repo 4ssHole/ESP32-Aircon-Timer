@@ -1,3 +1,24 @@
+/* 
+
+TODO   
+
+Setup:
+Network discovery in android app possibly using mDNS
+Pairing and passwords
+if ntp cannot sync, notify in app and change to time offset only mode
+
+Functionallity:
+Store sent times in rtc memory to survive deep sleep
+
+Hardware: 
+Add leds for status indicators
+
+
+
+DONE:
+Get current time from ntp, do not accept requests until time is synced
+*/
+
 #include <string.h>
 #include <sys/param.h>
 #include <sys/time.h>
@@ -33,11 +54,12 @@ void changeGPIO(void){
     gpio_set_level(relayPin, relayOn);
 }
 
-void waitForNTPSync(void){
-    while(time(NULL) <= 100){
+void waitForNTPSync(void){    
+    while(time(NULL) < 120){
         ESP_LOGI(TAG, "Time now : %lu", time(NULL));
         sleep(1);
     }
+    
     ESP_LOGI(TAG, "Time now : %lu", time(NULL));
 }
 
@@ -120,8 +142,6 @@ static void tcp_server_task(void *pvParameters)
     int ip_protocol = 0;
     struct sockaddr_in6 dest_addr;
 
- 
-
     if (addr_family == AF_INET) {
         struct sockaddr_in *dest_addr_ip4 = (struct sockaddr_in *)&dest_addr;
         dest_addr_ip4->sin_addr.s_addr = htonl(INADDR_ANY);
@@ -141,13 +161,7 @@ static void tcp_server_task(void *pvParameters)
         vTaskDelete(NULL);
         return;
     }
-#if defined(CONFIG_EXAMPLE_IPV4) && defined(CONFIG_EXAMPLE_IPV6)
-    // Note that by default IPV6 binds to both protocols, it is must be disabled
-    // if both protocols used at the same time (used in CI)
-    int opt = 1;
-    setsockopt(listen_sock, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
-    setsockopt(listen_sock, IPPROTO_IPV6, IPV6_V6ONLY, &opt, sizeof(opt));
-#endif
+
     ESP_LOGI(TAG, "Socket created");
 
     int err = bind(listen_sock, (struct sockaddr *)&dest_addr, sizeof(dest_addr));
@@ -186,7 +200,6 @@ static void tcp_server_task(void *pvParameters)
 
         printTimeNow();
         changeGPIO();
-
 
         do_retransmit(sock);
 
