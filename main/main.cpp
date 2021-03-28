@@ -3,6 +3,7 @@
 TODO   
 
 Setup:
+mDNS server for discovery
 Network discovery in android app possibly using mDNS
 Pairing and passwords
 if ntp cannot sync, notify in app and change to time offset only mode
@@ -19,7 +20,7 @@ DONE:
 Get current time from ntp, do not accept requests until time is synced
 */
 
-#include <string.h>
+#include <string>
 #include <sys/param.h>
 #include <sys/time.h>
 #include "freertos/FreeRTOS.h"
@@ -32,6 +33,7 @@ Get current time from ntp, do not accept requests until time is synced
 #include "nvs_flash.h"
 #include "esp_netif.h"
 #include "protocol_examples_common.h"
+#include "mdns.h"
 
 #include "driver/gpio.h"
 
@@ -41,47 +43,21 @@ Get current time from ntp, do not accept requests until time is synced
 #include <lwip/netdb.h>
 
 #define PORT 10000
-#define relayPin 18
+#define relayPin GPIO_NUM_18
 
 static const char *TAG = "example";
 
 bool relayOn = false;
 
-void changeGPIO(void){
-    relayOn = !relayOn;
-
-    gpio_set_direction(relayPin, GPIO_MODE_OUTPUT);
-    gpio_set_level(relayPin, relayOn);
-}
-
-void waitForNTPSync(void){    
-    while(time(NULL) < 120){
-        ESP_LOGI(TAG, "Time now : %lu", time(NULL));
-        sleep(1);
-    }
-    
-    ESP_LOGI(TAG, "Time now : %lu", time(NULL));
-}
-
-void printTimeNow(void){
-    // time_t now = time(NULL);
-    // char strftime_buf[64];
-    // struct tm timeinfo;
-
-    ESP_LOGI(TAG, "Time now : %lu", time(NULL));   
-    // time(&now);
-    // setenv("TZ", "GMT-8", 1);
-    // tzset();
-
-    // localtime_r(&now, &timeinfo);
-    // strftime(strftime_buf, sizeof(strftime_buf), "%c", &timeinfo);
-    // ESP_LOGI(TAG, "Time now : %s", strftime_buf);   
-}
+void changeGPIO();
+void waitForNTPSync();   
+std::string convertEpochToFormattedTime(time_t epoch);
+void start_mdns_service();
 
 static void do_retransmit(const int sock);
 static void tcp_server_task(void *pvParameters);
 
-void app_main(void)
+extern "C" void app_main(void)
 {
     ESP_ERROR_CHECK(nvs_flash_init());
     ESP_ERROR_CHECK(esp_netif_init());
@@ -97,9 +73,52 @@ void app_main(void)
     sntp_setservername(0, "pool.ntp.org");
     sntp_init();
 
+
+
     waitForNTPSync();
 
+    ESP_LOGI(TAG, "Time now : %s", convertEpochToFormattedTime(time(NULL)).c_str());   
+
     xTaskCreate(tcp_server_task, "tcp_server", 4096, (void*)AF_INET, 5, NULL);
+}
+
+void waitForNTPSync(){    
+    while(time(NULL) < 120){
+        ESP_LOGI(TAG, "Time now : %lu", time(NULL));
+        sleep(1);
+    }
+}
+
+void changeGPIO(){
+    gpio_set_direction(relayPin, GPIO_MODE_OUTPUT);
+    relayOn = !relayOn;   
+    gpio_set_level(relayPin, relayOn);
+}
+
+void start_mdns_service()
+{
+    esp_err_t err = mdns_init();
+    if (err) {
+        printf("MDNS Init failed: %d\n", err);
+        return;
+    }
+
+    mdns_hostname_set("TimedRelay-ESP32S2");
+    mdns_instance_name_set("Development ESP32 S2");
+}
+
+std::string convertEpochToFormattedTime(time_t epoch){
+    char strftime_buf[64];
+    struct tm timeinfo;
+
+    ESP_LOGI(TAG, "Time now : %lu", time(NULL));   
+
+    setenv("TZ", "GMT-8", 1);
+    tzset();
+
+    localtime_r(&epoch, &timeinfo);
+    strftime(strftime_buf, sizeof(strftime_buf), "%c", &timeinfo);
+    return (std::string) strftime_buf;   
 }
 
 static void do_retransmit(const int sock)
@@ -141,6 +160,8 @@ static void tcp_server_task(void *pvParameters)
     int addr_family = (int)pvParameters;
     int ip_protocol = 0;
     struct sockaddr_in6 dest_addr;
+
+    start_mdns_service();
 
     if (addr_family == AF_INET) {
         struct sockaddr_in *dest_addr_ip4 = (struct sockaddr_in *)&dest_addr;
@@ -197,8 +218,6 @@ static void tcp_server_task(void *pvParameters)
             inet6_ntoa_r(source_addr.sin6_addr, addr_str, sizeof(addr_str) - 1);
         }
         ESP_LOGI(TAG, "Socket accepted ip address: %s", addr_str);
-
-        printTimeNow();
         changeGPIO();
 
         do_retransmit(sock);

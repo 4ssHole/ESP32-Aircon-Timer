@@ -1,10 +1,12 @@
 {
     "idf.adapterTargetName": "esp32s2",
-    "idf.portWin": "COM4",
+    "idf.portWin": "COM10",
     "idf.flashType": "UART",
     "files.associations": {
         "xlocale": "c",
         "*.inc": "c",
-        "gpio.h": "c"
+        "gpio.h": "c",
+        "xstring": "cpp",
+        "string": "cpp"
     }
 }
