@@ -18,6 +18,9 @@ Add leds for status indicators
 
 DONE:
 Get current time from ntp, do not accept requests until time is synced
+Preliminary mDNS implementation
+Sending epoch to client
+
 */
 
 #include <string>
@@ -51,11 +54,12 @@ bool relayOn = false;
 
 void changeGPIO();
 void waitForNTPSync();   
-std::string convertEpochToFormattedTime(time_t epoch);
 void start_mdns_service();
 
 static void do_retransmit(const int sock);
 static void tcp_server_task(void *pvParameters);
+
+std::string convertEpochToFormattedTime(time_t epoch);
 
 extern "C" void app_main(void)
 {
@@ -72,8 +76,6 @@ extern "C" void app_main(void)
     sntp_setoperatingmode(SNTP_OPMODE_POLL);
     sntp_setservername(0, "pool.ntp.org");
     sntp_init();
-
-
 
     waitForNTPSync();
 
@@ -126,8 +128,7 @@ static void do_retransmit(const int sock)
     int len;
     char rx_buffer[128];
 
-    char buffer[64] = {0};
-    itoa (time(NULL),buffer,10);
+    std::string buffer = std::to_string(time(NULL));
 
     do {
         len = recv(sock, rx_buffer, sizeof(rx_buffer) - 1, 0);
@@ -139,13 +140,9 @@ static void do_retransmit(const int sock)
             rx_buffer[len] = 0; // Null-terminate whatever is received and treat it like a string
             ESP_LOGI(TAG, "Received %d bytes: %s", len, rx_buffer);
 
-            // send() can return less bytes than supplied length.
-            // Walk-around for robust implementation. 
-
             int to_write = len;
             while (to_write > 0) {
-                // int written = send(sock, rx_buffer + (len - to_write), to_write, 0);
-                int written = send(sock, &buffer, sizeof(buffer), 0);
+                int written = send(sock, buffer.data(), buffer.size(), 0);
                 if (written < 0) {
                     ESP_LOGE(TAG, "Error occurred during sending: errno %d", errno);
                 }
