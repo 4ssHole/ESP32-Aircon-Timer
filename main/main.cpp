@@ -10,6 +10,7 @@ if ntp cannot sync, notify in app and change to time offset only mode
 
 Functionallity:
 Store sent times in rtc memory to survive deep sleep
+Store mDNS name and password in persistent memory
 
 Hardware: 
 Add leds for status indicators
@@ -33,10 +34,15 @@ Sending epoch to client
 #include "esp_sntp.h"
 #include "esp_event.h"
 #include "esp_log.h"
-#include "nvs_flash.h"
 #include "esp_netif.h"
 #include "protocol_examples_common.h"
 #include "mdns.h"
+
+#include <stdio.h>
+
+#include "nvs_flash.h"
+#include "nvs.h"
+#include "nvs_handle.hpp"
 
 #include "driver/gpio.h"
 
@@ -50,51 +56,124 @@ Sending epoch to client
 
 static const char *TAG = "example";
 
+std::string defaultmDNSHostName = "smartdevice";
+time_t setTime = 0;
 bool relayOn = false;
+bool setupMode = true;
 
-void changeGPIO();
 void waitForNTPSync();   
 void start_mdns_service();
 
-static void do_retransmit(const int sock);
+static void checkTime(void *pvParameters);
 static void tcp_server_task(void *pvParameters);
+const char* bool_cast(const bool b);
 
-std::string convertEpochToFormattedTime(time_t epoch);
-
-extern "C" void app_main(void)
-{
-    ESP_ERROR_CHECK(nvs_flash_init());
-    ESP_ERROR_CHECK(esp_netif_init());
-    ESP_ERROR_CHECK(esp_event_loop_create_default());
-
-    /* This helper function configures Wi-Fi or Ethernet, as selected in menuconfig.
-     * Read "Establishing Wi-Fi or Ethernet Connection" section in
-     * examples/protocols/README.md for more information about this function.
-     */
-    ESP_ERROR_CHECK(example_connect());
-
-    sntp_setoperatingmode(SNTP_OPMODE_POLL);
-    sntp_setservername(0, "pool.ntp.org");
-    sntp_init();
-
-    waitForNTPSync();
-
-    ESP_LOGI(TAG, "Time now : %s", convertEpochToFormattedTime(time(NULL)).c_str());   
-
-    xTaskCreate(tcp_server_task, "tcp_server", 4096, (void*)AF_INET, 5, NULL);
-}
-
-void waitForNTPSync(){    
-    while(time(NULL) < 120){
-        ESP_LOGI(TAG, "Time now : %lu", time(NULL));
-        sleep(1);
+extern "C" void app_main(void){
+    // Initialize NVS
+    esp_err_t err = nvs_flash_init();
+    if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+        // NVS partition was truncated and needs to be erased
+        // Retry nvs_flash_init
+        ESP_ERROR_CHECK(nvs_flash_erase());
+        err = nvs_flash_init();
     }
+    ESP_ERROR_CHECK( err );
+
+    // Open
+    printf("\n");
+    printf("Opening Non-Volatile Storage (NVS) handle... ");
+    esp_err_t result;
+    // Handle will automatically close when going out of scope or when it's reset.
+    std::shared_ptr<nvs::NVSHandle> handle = nvs::open_nvs_handle("storage", NVS_READWRITE, &result);
+
+    nvs::ItemType test = nvs::ItemType::SZ;
+  
+    if (err != ESP_OK) {
+        printf("Error (%s) opening NVS handle!\n", esp_err_to_name(err));
+    } else {
+        printf("Done\n");
+        size_t required_size;
+        // Read
+        printf("Reading restart counter from NVS ... ");
+        // err = handle->get_string("mDNS_HostName", NULL, required_size);
+        handle->get_item_size(nvs::ItemType::SZ , "mDNS_HostName", required_size);
+        char* nvStoreValue = (char*) malloc(required_size); // value will default to 0, if not set yet in NVS
+
+        err = handle->get_string("mDNS_HostName", nvStoreValue, required_size);
+
+
+        switch (err) {
+            case ESP_OK:
+                printf("Done\n");
+                printf("NON VOLITILE MEMORY\nmDNS_HostName = %s\n", nvStoreValue);
+                break;
+            case ESP_ERR_NVS_NOT_FOUND:
+                printf("The value is not initialized yet!\n");
+                break;
+            default :
+                printf("Error (%s) reading!\n", esp_err_to_name(err));
+        }
+
+        // Write
+        if(defaultmDNSHostName == )
+        printf("Updating restart counter in NVS ... ");
+        err = handle->set_string("mDNS_HostName", "big tiddy ass hole");
+        printf((err != ESP_OK) ? "Failed!\n" : "Done\n");
+
+        // Commit written value.
+        // After setting any values, nvs_commit() must be called to ensure changes are written
+        // to flash storage. Implementations may write to storage at other times,
+        // but this is not guaranteed.
+        printf("Committing updates in NVS ... ");
+        err = handle->commit();
+        printf((err != ESP_OK) ? "Failed!\n" : "Done\n");
+    }
+
+
+    // gpio_set_direction(relayPin, GPIO_MODE_OUTPUT);
+    
+    // ESP_ERROR_CHECK(nvs_flash_init());
+    // ESP_ERROR_CHECK(esp_netif_init());
+    // ESP_ERROR_CHECK(esp_event_loop_create_default());
+    // ESP_ERROR_CHECK(example_connect());
+
+    // sntp_setoperatingmode(SNTP_OPMODE_POLL);
+    // sntp_setservername(0, "pool.ntp.org");
+    // sntp_init();
+
+    // waitForNTPSync();
+
+    // ESP_LOGI(TAG, "Time now : %lu", time(NULL));   
+
+    // xTaskCreate(tcp_server_task, "tcp_server", 4096, (void*)AF_INET, 5, NULL);
+    // xTaskCreate(checkTime, "checkTime", 4096, NULL, 5, NULL);
 }
 
-void changeGPIO(){
-    gpio_set_direction(relayPin, GPIO_MODE_OUTPUT);
-    relayOn = !relayOn;   
-    gpio_set_level(relayPin, relayOn);
+void checkTime(void *pvParameters){  
+    while(1){
+        time_t timeNow = time(NULL);
+
+        switch(relayOn){
+            case false:
+                if(timeNow < setTime){
+                    relayOn = true;
+                    gpio_set_level(relayPin, relayOn);
+                    ESP_LOGI(TAG, "START RELAY");   
+                }
+            break;
+
+            case true:
+                ESP_LOGI(TAG, "Counting : %lu", time(NULL));
+                if(timeNow >= setTime){
+                    relayOn = false;
+                    gpio_set_level(relayPin, relayOn);
+                    ESP_LOGI(TAG, "STOP RELAY");   
+                }
+            break;
+        } 
+        sleep(1);
+    }  
+    vTaskDelete(NULL);
 }
 
 void start_mdns_service()
@@ -105,52 +184,46 @@ void start_mdns_service()
         return;
     }
 
-    mdns_hostname_set("TimedRelay-ESP32S2");
+    mdns_hostname_set(mDNSHostName.c_str());
     mdns_instance_name_set("Development ESP32 S2");
 }
 
-std::string convertEpochToFormattedTime(time_t epoch){
-    char strftime_buf[64];
-    struct tm timeinfo;
-
-    ESP_LOGI(TAG, "Time now : %lu", time(NULL));   
-
-    setenv("TZ", "GMT-8", 1);
-    tzset();
-
-    localtime_r(&epoch, &timeinfo);
-    strftime(strftime_buf, sizeof(strftime_buf), "%c", &timeinfo);
-    return (std::string) strftime_buf;   
-}
-
-static void do_retransmit(const int sock)
-{
+static void recieveEpoch(const int sock){
     int len;
     char rx_buffer[128];
 
-    std::string buffer = std::to_string(time(NULL));
-
     do {
         len = recv(sock, rx_buffer, sizeof(rx_buffer) - 1, 0);
+        setTime = atoi(rx_buffer);
         if (len < 0) {
             ESP_LOGE(TAG, "Error occurred during receiving: errno %d", errno);
         } else if (len == 0) {
             ESP_LOGW(TAG, "Connection closed");
         } else {
-            rx_buffer[len] = 0; // Null-terminate whatever is received and treat it like a string
-            ESP_LOGI(TAG, "Received %d bytes: %s", len, rx_buffer);
-
-            int to_write = len;
-            while (to_write > 0) {
-                int written = send(sock, buffer.data(), buffer.size(), 0);
-                if (written < 0) {
-                    ESP_LOGE(TAG, "Error occurred during sending: errno %d", errno);
-                }
-                to_write -= written;
-            }
+            ESP_LOGI(TAG, "setTime : %lu rx_buffer : %s", setTime, rx_buffer);
         }
     } while (len > 0);
 }
+
+static void setupVariables(const int sock){
+    int len;
+    char rx_buffer[128];
+    do {
+        len = recv(sock, rx_buffer, sizeof(rx_buffer) - 1, 0);
+        mDNSHostName = rx_buffer;
+        if (len < 0) {
+            ESP_LOGE(TAG, "Error occurred during receiving: errno %d", errno);
+        } else if (len == 0) {
+            ESP_LOGW(TAG, "Connection closed");
+        } else {
+            ESP_LOGI(TAG, "setTime : %lu rx_buffer : %s", setTime, rx_buffer);
+        }
+    } while (len > 0);
+
+
+    setupMode = false;
+}
+
 static void tcp_server_task(void *pvParameters)
 {
     char addr_str[128];
@@ -209,15 +282,22 @@ static void tcp_server_task(void *pvParameters)
         }
 
         // Convert ip address to string
-        if (source_addr.sin6_family == PF_INET) {
-            inet_ntoa_r(((struct sockaddr_in *)&source_addr)->sin_addr.s_addr, addr_str, sizeof(addr_str) - 1);
-        } else if (source_addr.sin6_family == PF_INET6) {
-            inet6_ntoa_r(source_addr.sin6_addr, addr_str, sizeof(addr_str) - 1);
-        }
+        if (source_addr.sin6_family == PF_INET) inet_ntoa_r(((struct sockaddr_in *)&source_addr)->sin_addr.s_addr, addr_str, sizeof(addr_str) - 1);
+        else if (source_addr.sin6_family == PF_INET6) inet6_ntoa_r(source_addr.sin6_addr, addr_str, sizeof(addr_str) - 1);
+        
         ESP_LOGI(TAG, "Socket accepted ip address: %s", addr_str);
-        changeGPIO();
 
-        do_retransmit(sock);
+        int written = send(sock, bool_cast(setupMode), 1, 0);
+        if (written < 0) {
+            ESP_LOGE(TAG, "Error occurred during sending: errno %d", errno);
+        }
+
+        if(setupMode){
+            setupVariables(sock);
+        }
+        else{
+            recieveEpoch(sock);
+        }
 
         shutdown(sock, 0);
         close(sock);
@@ -226,4 +306,15 @@ static void tcp_server_task(void *pvParameters)
 CLEAN_UP:
     close(listen_sock);
     vTaskDelete(NULL);
+}
+
+void waitForNTPSync(){    
+    while(time(NULL) < 120){
+        ESP_LOGI(TAG, "Time now : %lu", time(NULL));
+        sleep(1);
+    }
+} 
+
+const char* bool_cast(const bool b) {
+    return b ? "1" : "0";
 }
