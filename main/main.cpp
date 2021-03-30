@@ -38,11 +38,7 @@ Sending epoch to client
 #include "protocol_examples_common.h"
 #include "mdns.h"
 
-#include <stdio.h>
-
-#include "nvs_flash.h"
-#include "nvs.h"
-#include "nvs_handle.hpp"
+#include "NV"
 
 #include "driver/gpio.h"
 
@@ -69,65 +65,7 @@ static void tcp_server_task(void *pvParameters);
 const char* bool_cast(const bool b);
 
 extern "C" void app_main(void){
-    // Initialize NVS
-    esp_err_t err = nvs_flash_init();
-    if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
-        // NVS partition was truncated and needs to be erased
-        // Retry nvs_flash_init
-        ESP_ERROR_CHECK(nvs_flash_erase());
-        err = nvs_flash_init();
-    }
-    ESP_ERROR_CHECK( err );
 
-    // Open
-    printf("\n");
-    printf("Opening Non-Volatile Storage (NVS) handle... ");
-    esp_err_t result;
-    // Handle will automatically close when going out of scope or when it's reset.
-    std::shared_ptr<nvs::NVSHandle> handle = nvs::open_nvs_handle("storage", NVS_READWRITE, &result);
-
-    nvs::ItemType test = nvs::ItemType::SZ;
-  
-    if (err != ESP_OK) {
-        printf("Error (%s) opening NVS handle!\n", esp_err_to_name(err));
-    } else {
-        printf("Done\n");
-        size_t required_size;
-        // Read
-        printf("Reading restart counter from NVS ... ");
-        // err = handle->get_string("mDNS_HostName", NULL, required_size);
-        handle->get_item_size(nvs::ItemType::SZ , "mDNS_HostName", required_size);
-        char* nvStoreValue = (char*) malloc(required_size); // value will default to 0, if not set yet in NVS
-
-        err = handle->get_string("mDNS_HostName", nvStoreValue, required_size);
-
-
-        switch (err) {
-            case ESP_OK:
-                printf("Done\n");
-                printf("NON VOLITILE MEMORY\nmDNS_HostName = %s\n", nvStoreValue);
-                break;
-            case ESP_ERR_NVS_NOT_FOUND:
-                printf("The value is not initialized yet!\n");
-                break;
-            default :
-                printf("Error (%s) reading!\n", esp_err_to_name(err));
-        }
-
-        // Write
-        if(defaultmDNSHostName == )
-        printf("Updating restart counter in NVS ... ");
-        err = handle->set_string("mDNS_HostName", "big tiddy ass hole");
-        printf((err != ESP_OK) ? "Failed!\n" : "Done\n");
-
-        // Commit written value.
-        // After setting any values, nvs_commit() must be called to ensure changes are written
-        // to flash storage. Implementations may write to storage at other times,
-        // but this is not guaranteed.
-        printf("Committing updates in NVS ... ");
-        err = handle->commit();
-        printf((err != ESP_OK) ? "Failed!\n" : "Done\n");
-    }
 
 
     // gpio_set_direction(relayPin, GPIO_MODE_OUTPUT);
@@ -148,6 +86,7 @@ extern "C" void app_main(void){
     // xTaskCreate(tcp_server_task, "tcp_server", 4096, (void*)AF_INET, 5, NULL);
     // xTaskCreate(checkTime, "checkTime", 4096, NULL, 5, NULL);
 }
+
 
 void checkTime(void *pvParameters){  
     while(1){
@@ -184,7 +123,7 @@ void start_mdns_service()
         return;
     }
 
-    mdns_hostname_set(mDNSHostName.c_str());
+    mdns_hostname_set(defaultmDNSHostName.c_str());
     mdns_instance_name_set("Development ESP32 S2");
 }
 
@@ -210,7 +149,7 @@ static void setupVariables(const int sock){
     char rx_buffer[128];
     do {
         len = recv(sock, rx_buffer, sizeof(rx_buffer) - 1, 0);
-        mDNSHostName = rx_buffer;
+        defaultmDNSHostName = rx_buffer;
         if (len < 0) {
             ESP_LOGE(TAG, "Error occurred during receiving: errno %d", errno);
         } else if (len == 0) {
