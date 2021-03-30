@@ -49,10 +49,11 @@ Sending epoch to client
 #define PORT 10000
 #define relayPin GPIO_NUM_18
 
-static const std::string NVSKEYmDNS = "mDNSHostName";
 static const char *TAG = "example";
 
 static const char *defaultmDNSHostName = "smartdevice";
+static const std::string NVSKEYmDNS = "mDNSHostName";
+
 time_t setTime = 0;
 bool relayOn = false;
 bool setupMode = true;
@@ -64,13 +65,21 @@ static void checkTime(void *pvParameters);
 static void tcp_server_task(void *pvParameters);
 const char* bool_cast(const bool b);
 
+
 extern "C" void app_main(void){
+    NVStoreHelper nvStoreHelper = NVStoreHelper(NVSKEYmDNS, defaultmDNSHostName);
 
-    NVStoreHelper nvStoreHelper = NVStoreHelper();
-
-    ESP_LOGI(TAG, "NVS VALUE : %s", nvStoreHelper.readNVS(NVSKEYmDNS).c_str());
-
-    nvStoreHelper.writeNVS(NVSKEYmDNS, defaultmDNSHostName);
+    if(nvStoreHelper.readNVS().c_str() == defaultmDNSHostName){
+        setupMode = true;
+        nvStoreHelper.setValue("test");
+        nvStoreHelper.writeNVS();
+    }
+    else if (nvStoreHelper.readNVS().c_str() != defaultmDNSHostName && setupMode){
+        setupMode = false;
+    }
+    
+    ESP_LOGI(TAG,"NVSTORE : %s",nvStoreHelper.readNVS().c_str());
+    nvStoreHelper.writeNVS();
 
     // gpio_set_direction(relayPin, GPIO_MODE_OUTPUT);
     

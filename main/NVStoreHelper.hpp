@@ -7,10 +7,11 @@
 #include "esp_log.h"
 
 class NVStoreHelper{
-    private:
+    private:        
+        std::shared_ptr<nvs::NVSHandle> handle;
+
         std::string KEY;
         std::string VALUE;
-        std::shared_ptr<nvs::NVSHandle> handle;
 
         esp_err_t err;
         esp_err_t result;
@@ -18,14 +19,15 @@ class NVStoreHelper{
         char* nvStoreValue;
 
         void initializeNVS();
+        void openNVSHandle();
 
     public:
         NVStoreHelper();
+        NVStoreHelper(std::string Key, std::string Value);
+
         void setKey(std::string Key);
         void setValue(std::string Value);
-        void writeNVS(std::string Key, std::string Value);
-        std::string readNVS(std::string Key);
-
-
-
+        
+        void writeNVS();
+        std::string readNVS();
 };
