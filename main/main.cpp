@@ -38,8 +38,7 @@ Sending epoch to client
 #include "protocol_examples_common.h"
 #include "mdns.h"
 
-#include "NV"
-
+#include "NVStoreHelper.hpp"
 #include "driver/gpio.h"
 
 #include "lwip/err.h"
@@ -50,9 +49,10 @@ Sending epoch to client
 #define PORT 10000
 #define relayPin GPIO_NUM_18
 
+static const std::string NVSKEYmDNS = "mDNSHostName";
 static const char *TAG = "example";
 
-std::string defaultmDNSHostName = "smartdevice";
+static const char *defaultmDNSHostName = "smartdevice";
 time_t setTime = 0;
 bool relayOn = false;
 bool setupMode = true;
@@ -66,7 +66,11 @@ const char* bool_cast(const bool b);
 
 extern "C" void app_main(void){
 
+    NVStoreHelper nvStoreHelper = NVStoreHelper();
 
+    ESP_LOGI(TAG, "NVS VALUE : %s", nvStoreHelper.readNVS("test").c_str());
+
+    nvStoreHelper.writeNVS("test", "asd");
 
     // gpio_set_direction(relayPin, GPIO_MODE_OUTPUT);
     
@@ -123,7 +127,7 @@ void start_mdns_service()
         return;
     }
 
-    mdns_hostname_set(defaultmDNSHostName.c_str());
+    mdns_hostname_set(defaultmDNSHostName);
     mdns_instance_name_set("Development ESP32 S2");
 }
 
