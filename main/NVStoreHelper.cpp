@@ -56,11 +56,11 @@ std::string NVStoreHelper::readNVS(std::string Key){
 void NVStoreHelper::writeNVS(std::string Key, std::string Value){
     ESP_LOGI(TAG, "Updating restart counter in NVS ... ");
     err = handle->set_string(Key.c_str(), Value.c_str());
-    // ESP_LOGI(TAG, (err != ESP_OK) ? "Failed!\n" : "Done\n");
+    //TODO ESP_LOGI(TAG, (err != ESP_OK) ? "Failed!\n" : "Done\n"); 
 
     ESP_LOGI(TAG, "Committing updates in NVS ... ");
     err = handle->commit();
-    // ESP_LOGI(TAG, (err != ESP_OK) ? "Failed!\n" : "Done\n");
+    //TODO ESP_LOGI(TAG, (err != ESP_OK) ? "Failed!\n" : "Done\n"); 
 }
 
 

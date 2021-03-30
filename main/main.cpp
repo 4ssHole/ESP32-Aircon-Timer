@@ -68,9 +68,9 @@ extern "C" void app_main(void){
 
     NVStoreHelper nvStoreHelper = NVStoreHelper();
 
-    ESP_LOGI(TAG, "NVS VALUE : %s", nvStoreHelper.readNVS("test").c_str());
+    ESP_LOGI(TAG, "NVS VALUE : %s", nvStoreHelper.readNVS(NVSKEYmDNS).c_str());
 
-    nvStoreHelper.writeNVS("test", "asd");
+    nvStoreHelper.writeNVS(NVSKEYmDNS, defaultmDNSHostName);
 
     // gpio_set_direction(relayPin, GPIO_MODE_OUTPUT);
     
