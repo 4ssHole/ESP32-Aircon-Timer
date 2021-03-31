@@ -51,7 +51,7 @@ Sending epoch to client
 
 static const char *TAG = "example";
 
-static const char *defaultmDNSHostName = "smartdevice";
+static const std::string defaultmDNSHostName = "smartdevice";
 static const std::string NVSKEYmDNS = "mDNSHostName";
 
 time_t setTime = 0;
@@ -65,20 +65,20 @@ static void checkTime(void *pvParameters);
 static void tcp_server_task(void *pvParameters);
 const char* bool_cast(const bool b);
 
-
 extern "C" void app_main(void){
     NVStoreHelper nvStoreHelper = NVStoreHelper(NVSKEYmDNS, defaultmDNSHostName);
+    std::string readResult = nvStoreHelper.readNVS();
 
-    if(nvStoreHelper.readNVS().c_str() == defaultmDNSHostName){
+    if (readResult == defaultmDNSHostName){
         setupMode = true;
         nvStoreHelper.setValue("test");
         nvStoreHelper.writeNVS();
     }
-    else if (nvStoreHelper.readNVS().c_str() != defaultmDNSHostName && setupMode){
+    else if (readResult != defaultmDNSHostName && setupMode){
         setupMode = false;
     }
     
-    ESP_LOGI(TAG,"NVSTORE : %s",nvStoreHelper.readNVS().c_str());
+    ESP_LOGI(TAG,"NVSTORE : %s",nvStoreHelper.readNVS());
     nvStoreHelper.writeNVS();
 
     // gpio_set_direction(relayPin, GPIO_MODE_OUTPUT);

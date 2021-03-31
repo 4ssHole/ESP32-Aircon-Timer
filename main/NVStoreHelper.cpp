@@ -79,7 +79,6 @@ void NVStoreHelper::setValue(std::string Value){
     ESP_LOGI(TAG, "Value set to : %s", VALUE.c_str());
 }
 
-
 void NVStoreHelper::writeNVS(){
     ESP_LOGI(TAG, "writing to KEY: %s\nValue: %s",KEY.c_str() , VALUE.c_str());
     err = handle->set_string(KEY.c_str(), VALUE.c_str());
