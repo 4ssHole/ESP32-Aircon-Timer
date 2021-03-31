@@ -49,55 +49,77 @@ Sending epoch to client
 #define PORT 10000
 #define relayPin GPIO_NUM_18
 
-static const char *TAG = "example";
+static const char *TAG = "MAIN";
 
-static const std::string defaultmDNSHostName = "smartdevice";
-static const std::string NVSKEYmDNS = "mDNSHostName";
+static const char *NVS_KEY_mDNSHostName = "mDNSHostName";
+static const char *NVS_VALUE_mDNSHostName = "smartdevice";
+
+static const char *NVS_KEY_setupMode = "setupComplete";
+static const int NVS_VALUE_setupMode = 0;
+
+bool setupMode;
 
 time_t setTime = 0;
 bool relayOn = false;
-bool setupMode = true;
 
 void waitForNTPSync();   
 void start_mdns_service();
+void setupDevice();
 
 static void checkTime(void *pvParameters);
 static void tcp_server_task(void *pvParameters);
 const char* bool_cast(const bool b);
 
+NVStoreHelper nvStoreHelper = NVStoreHelper();
+
 extern "C" void app_main(void){
-    NVStoreHelper nvStoreHelper = NVStoreHelper(NVSKEYmDNS, defaultmDNSHostName);
-    std::string readResult = nvStoreHelper.readNVS();
-
-    if (readResult == defaultmDNSHostName){
-        setupMode = true;
-        nvStoreHelper.setValue("test");
-        nvStoreHelper.writeNVS();
-    }
-    else if (readResult != defaultmDNSHostName && setupMode){
-        setupMode = false;
-    }
+    gpio_set_direction(relayPin, GPIO_MODE_OUTPUT);
     
-    ESP_LOGI(TAG,"NVSTORE : %s",nvStoreHelper.readNVS());
-    nvStoreHelper.writeNVS();
+    ESP_ERROR_CHECK(esp_netif_init());
+    ESP_ERROR_CHECK(esp_event_loop_create_default());
+    ESP_ERROR_CHECK(example_connect());
 
-    // gpio_set_direction(relayPin, GPIO_MODE_OUTPUT);
-    
-    // ESP_ERROR_CHECK(nvs_flash_init());
-    // ESP_ERROR_CHECK(esp_netif_init());
-    // ESP_ERROR_CHECK(esp_event_loop_create_default());
-    // ESP_ERROR_CHECK(example_connect());
+    ESP_LOGI(TAG, "get string : %s",nvStoreHelper.getString((char *) NVS_KEY_mDNSHostName).c_str());
 
-    // sntp_setoperatingmode(SNTP_OPMODE_POLL);
-    // sntp_setservername(0, "pool.ntp.org");
-    // sntp_init();
+    int test = nvStoreHelper.getInt((char *) NVS_KEY_setupMode);
+    ESP_LOGI(TAG, "int test : %d", test);
 
-    // waitForNTPSync();
+    switch(test){
+        case 1:
+            setupMode = true;
+            ESP_LOGI(TAG, "IN SETUP MODE");
+            setupDevice();
 
+            break;
+        case 0:
+            setupMode = false;
+            ESP_LOGI(TAG, "IN NORMAL MODE");
+            // ESP_ERROR_CHECK(nvs_flash_erase()); // remove when in production
+
+            break;
+        case 2:
+            ESP_LOGE(TAG, "NVS INT ERROR");
+            
+            break;
+        default:
+            ESP_LOGE(TAG, "NOTHING RETURNED NVS INT ERROR");
+    }
+
+    sntp_setoperatingmode(SNTP_OPMODE_POLL);
+    sntp_setservername(0, "pool.ntp.org");
+    sntp_init();
+
+    waitForNTPSync();
     // ESP_LOGI(TAG, "Time now : %lu", time(NULL));   
 
     // xTaskCreate(tcp_server_task, "tcp_server", 4096, (void*)AF_INET, 5, NULL);
     // xTaskCreate(checkTime, "checkTime", 4096, NULL, 5, NULL);
+}
+
+void setupDevice(){
+
+
+    nvStoreHelper.writeInt((char *) NVS_KEY_setupMode, 0);
 }
 
 
@@ -136,7 +158,7 @@ void start_mdns_service()
         return;
     }
 
-    mdns_hostname_set(defaultmDNSHostName);
+    mdns_hostname_set(NVS_VALUE_mDNSHostName);
     mdns_instance_name_set("Development ESP32 S2");
 }
 
@@ -162,7 +184,7 @@ static void setupVariables(const int sock){
     char rx_buffer[128];
     do {
         len = recv(sock, rx_buffer, sizeof(rx_buffer) - 1, 0);
-        defaultmDNSHostName = rx_buffer;
+        
         if (len < 0) {
             ESP_LOGE(TAG, "Error occurred during receiving: errno %d", errno);
         } else if (len == 0) {

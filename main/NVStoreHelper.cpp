@@ -12,14 +12,6 @@ NVStoreHelper::NVStoreHelper(){
     openNVSHandle();
 }
 
-NVStoreHelper::NVStoreHelper(std::string Key, std::string Value){
-    initializeNVS();
-    openNVSHandle();
-
-    setKey(Key);
-    setValue(Value);
-}
-
 void NVStoreHelper::initializeNVS(){
     err = nvs_flash_init();
     if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
@@ -37,51 +29,82 @@ void NVStoreHelper::openNVSHandle(){
     handle = nvs::open_nvs_handle("storage", NVS_READWRITE, &result);    
 }
 
-std::string NVStoreHelper::readNVS(){
-    if (err != ESP_OK) {
-        ESP_LOGI(TAG, "Error (%s) opening NVS handle!: ", esp_err_to_name(err));
-    } else {
-        ESP_LOGI(TAG, "Done\n");
+std::string NVStoreHelper::getString(char *KEY){
+    std::string returnValue = "error";
+    if (err != ESP_OK) ESP_LOGI(TAG, "Error (%s) opening NVS handle!: ", esp_err_to_name(err));
+    else {
         size_t required_size;
         // Read
-        ESP_LOGI(TAG, "Reading restart counter from NVS ... ");
-        handle->get_item_size(nvs::ItemType::SZ , KEY.c_str(), required_size);
-        nvStoreValue = (char*) malloc(required_size); // value will default to 0, if not set yet in NVS
-
-        err = handle->get_string(KEY.c_str(), nvStoreValue, required_size);
-
+        ESP_LOGI(TAG, "Reading String from NVS");
+        handle->get_item_size(nvs::ItemType::SZ , KEY, required_size);
+        nvStoreValue = (char*) malloc(required_size);
+        err = handle->get_string(KEY, nvStoreValue, required_size);
+ 
         switch (err) {
             case ESP_OK:
-                ESP_LOGI(TAG, "Done\n");
+                ESP_LOGI(TAG, "Done 2\n");
                 ESP_LOGI(TAG, "NON VOLITILE MEMORY\nStored value = %s", nvStoreValue);
+
+                returnValue = (char *) nvStoreValue;
+
                 break;
             case ESP_ERR_NVS_NOT_FOUND:
                 ESP_LOGI(TAG, "The value is not initialized yet!\n");
+                returnValue = "";
                 break;
             default :
                 ESP_LOGI(TAG, "Error (%s) reading!: ", esp_err_to_name(err));
         }                   
     }
 
-    std::string nvStore = nvStoreValue;
-    free(nvStoreValue); 
+    err = nvs_flash_init();
 
-    return nvStore;
+    return returnValue;
 }
 
-void NVStoreHelper::setKey(std::string Key){
-    KEY = Key;
-    ESP_LOGI(TAG, "Key set to : %s", KEY.c_str());
+int NVStoreHelper::getInt(char *KEY){
+    int returnValue = 2;
+    int value;
+
+    if (err != ESP_OK) {
+        ESP_LOGI(TAG, "Error (%s) opening NVS handle!: ", esp_err_to_name(err));
+    }
+    else {
+        err = handle->get_item(KEY, value);
+
+        switch (err) {
+            case ESP_OK:
+                ESP_LOGI(TAG, "NON VOLITILE MEMORY\nStored value = %d", value);
+                returnValue = value; // should be 0 for a setup esp
+                break;
+            case ESP_ERR_NVS_NOT_FOUND:
+                ESP_LOGI(TAG, "The value is not initialized yet!\n");
+                returnValue = 1;
+
+                break;
+            default :
+                ESP_LOGI(TAG, "Error (%s) reading!: ", esp_err_to_name(err));
+                returnValue = 2;
+        }                   
+    }
+
+    err = nvs_flash_init();
+
+    return returnValue;
 }
 
-void NVStoreHelper::setValue(std::string Value){
-    VALUE = Value;
-    ESP_LOGI(TAG, "Value set to : %s", VALUE.c_str());
+
+void NVStoreHelper::writeString(char *KEY, char *VALUE){
+    ESP_LOGI(TAG, "writing String to KEY: %s\nValue: %s", KEY, VALUE);
+    err = handle->set_string(KEY, VALUE);
+
+    ESP_LOGI(TAG, "Committing updates in NVS ... ");
+    err = handle->commit();
 }
 
-void NVStoreHelper::writeNVS(){
-    ESP_LOGI(TAG, "writing to KEY: %s\nValue: %s",KEY.c_str() , VALUE.c_str());
-    err = handle->set_string(KEY.c_str(), VALUE.c_str());
+void NVStoreHelper::writeInt(char *KEY, int VALUE){
+    ESP_LOGI(TAG, "writing Int to KEY: %s\nValue: %d", KEY, VALUE);
+    err = handle->set_item(KEY, VALUE);
 
     ESP_LOGI(TAG, "Committing updates in NVS ... ");
     err = handle->commit();
