@@ -11,6 +11,7 @@ if ntp cannot sync, notify in app and change to time offset only mode
 Functionallity:
 Store sent times in rtc memory to survive deep sleep
 Store mDNS name and password in persistent memory
+Press and hold a button to start smartconfig 
 
 Hardware: 
 Add leds for status indicators
@@ -38,6 +39,10 @@ Sending epoch to client
 #include "protocol_examples_common.h"
 #include "mdns.h"
 
+#include "esp_smartconfig.h"
+#include "esp_wpa2.h"
+#include "freertos/event_groups.h"
+
 #include "NVStoreHelper.hpp"
 #include "driver/gpio.h"
 
@@ -56,6 +61,8 @@ static const char *NVS_VALUE_mDNSHostName = "smartdevice";
 
 static const char *NVS_KEY_setupMode = "setupComplete";
 static const int NVS_VALUE_setupMode = 0;
+
+static EventGroupHandle_t s_wifi_event_group;
 
 bool setupMode;
 
