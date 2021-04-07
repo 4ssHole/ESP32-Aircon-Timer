@@ -77,15 +77,18 @@ static void checkTime(void *pvParameters);
 static void tcp_server_task(void *pvParameters);
 const char* bool_cast(const bool b);
 
-NVStoreHelper nvStoreHelper = NVStoreHelper();
 
 extern "C" void app_main(void){
+    NVStoreHelper nvStoreHelper = NVStoreHelper();
+
     gpio_set_direction(relayPin, GPIO_MODE_OUTPUT);
     
+    ESP_ERROR_CHECK(nvs_flash_init());
     ESP_ERROR_CHECK(esp_netif_init());
     ESP_ERROR_CHECK(esp_event_loop_create_default());
     ESP_ERROR_CHECK(example_connect());
 
+    
     ESP_LOGI(TAG, "get string : %s",nvStoreHelper.getString((char *) NVS_KEY_mDNSHostName).c_str());
 
     int test = nvStoreHelper.getInt((char *) NVS_KEY_setupMode);
@@ -117,7 +120,9 @@ extern "C" void app_main(void){
     sntp_init();
 
     waitForNTPSync();
-    // ESP_LOGI(TAG, "Time now : %lu", time(NULL));   
+    start_mdns_service();
+    
+    ESP_LOGI(TAG, "Time now : %lu", time(NULL));   
 
     // xTaskCreate(tcp_server_task, "tcp_server", 4096, (void*)AF_INET, 5, NULL);
     // xTaskCreate(checkTime, "checkTime", 4096, NULL, 5, NULL);
@@ -126,7 +131,7 @@ extern "C" void app_main(void){
 void setupDevice(){
 
 
-    nvStoreHelper.writeInt((char *) NVS_KEY_setupMode, 0);
+    // nvStoreHelper.writeInt((char *) NVS_KEY_setupMode, 0);
 }
 
 
@@ -166,7 +171,26 @@ void start_mdns_service()
     }
 
     mdns_hostname_set(NVS_VALUE_mDNSHostName);
-    mdns_instance_name_set("Development ESP32 S2");
+    mdns_instance_name_set("A Development ESP32 S2");
+
+     //add our services
+    mdns_service_add(NULL, "_AirconTimer", "_tcp", 80, NULL, 0);
+
+    //NOTE: services must be added before their properties can be set
+    //use custom instance for the web server
+    mdns_service_instance_name_set("_AirconTimer", "_tcp", "B Development ESP32 S2");
+
+    mdns_txt_item_t serviceTxtData[3] = {
+        //add unique board id, maybe mac address
+        {"board","{esp32}"},
+        {"u","user"},
+        {"p","password"}
+    };
+    //set txt data for service (will free and replace current data)
+    mdns_service_txt_set("_AirconTimer", "_tcp", serviceTxtData, 3);
+
+    //change service port
+    mdns_service_port_set("_AirconTimer", "_tcp", 10000);
 }
 
 static void recieveEpoch(const int sock){

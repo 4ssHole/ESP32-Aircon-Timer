@@ -1,5 +1,10 @@
 #include "NVStoreHelper.hpp"
 
+#include "nvs_flash.h"
+#include "nvs.h"
+#include "nvs_handle.hpp"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 #include "esp_system.h"
 #include "esp_event.h"
 
@@ -8,11 +13,6 @@
 static const char *TAG = "NVStoreHelper";
 
 NVStoreHelper::NVStoreHelper(){
-    initializeNVS();
-    openNVSHandle();
-}
-
-void NVStoreHelper::initializeNVS(){
     err = nvs_flash_init();
     if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
         // NVS partition was truncated and needs to be erased
@@ -21,6 +21,11 @@ void NVStoreHelper::initializeNVS(){
         err = nvs_flash_init();
     }
     ESP_ERROR_CHECK( err );
+    openNVSHandle();
+}
+
+void NVStoreHelper::initializeNVS(){
+    
 }
 
 void NVStoreHelper::openNVSHandle(){
