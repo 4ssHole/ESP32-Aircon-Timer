@@ -13,14 +13,14 @@
 static const char *TAG = "NVStoreHelper";
 
 NVStoreHelper::NVStoreHelper(){
-    err = nvs_flash_init();
-    if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+    m_err = nvs_flash_init();
+    if (m_err == ESP_ERR_NVS_NO_FREE_PAGES || m_err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
         // NVS partition was truncated and needs to be erased
         // Retry nvs_flash_init
         ESP_ERROR_CHECK(nvs_flash_erase());
-        err = nvs_flash_init();
+        m_err = nvs_flash_init();
     }
-    ESP_ERROR_CHECK( err );
+    ESP_ERROR_CHECK( m_err );
     openNVSHandle();
 }
 
@@ -31,26 +31,26 @@ void NVStoreHelper::initializeNVS(){
 void NVStoreHelper::openNVSHandle(){
     ESP_LOGI(TAG, "Opening Non-Volatile Storage (NVS) handle... ");
     // Handle will automatically close when going out of scope or when it's reset.
-    handle = nvs::open_nvs_handle("storage", NVS_READWRITE, &result);    
+    m_handle = nvs::open_nvs_handle("storage", NVS_READWRITE, &m_result);    
 }
 
 std::string NVStoreHelper::getString(char *KEY){
     std::string returnValue = "error";
-    if (err != ESP_OK) ESP_LOGI(TAG, "Error (%s) opening NVS handle!: ", esp_err_to_name(err));
+    if (m_err != ESP_OK) ESP_LOGI(TAG, "Error (%s) opening NVS handle!: ", esp_err_to_name(m_err));
     else {
         size_t required_size;
         // Read
         ESP_LOGI(TAG, "Reading String from NVS");
-        handle->get_item_size(nvs::ItemType::SZ , KEY, required_size);
-        nvStoreValue = (char*) malloc(required_size);
-        err = handle->get_string(KEY, nvStoreValue, required_size);
+        m_handle->get_item_size(nvs::ItemType::SZ , KEY, required_size);
+        m_nvStoreValue = (char*) malloc(required_size);
+        m_err = m_handle->get_string(KEY, m_nvStoreValue, required_size);
  
-        switch (err) {
+        switch (m_err) {
             case ESP_OK:
                 ESP_LOGI(TAG, "Done 2\n");
-                ESP_LOGI(TAG, "NON VOLITILE MEMORY\nStored value = %s", nvStoreValue);
+                ESP_LOGI(TAG, "NON VOLITILE MEMORY\nStored value = %s", m_nvStoreValue);
 
-                returnValue = (char *) nvStoreValue;
+                returnValue = (char *) m_nvStoreValue;
 
                 break;
             case ESP_ERR_NVS_NOT_FOUND:
@@ -58,11 +58,11 @@ std::string NVStoreHelper::getString(char *KEY){
                 returnValue = "";
                 break;
             default :
-                ESP_LOGI(TAG, "Error (%s) reading!: ", esp_err_to_name(err));
+                ESP_LOGI(TAG, "Error (%s) reading!: ", esp_err_to_name(m_err));
         }                   
     }
 
-    err = nvs_flash_init();
+    m_err = nvs_flash_init();
 
     return returnValue;
 }
@@ -71,13 +71,13 @@ int NVStoreHelper::getInt(char *KEY){
     int returnValue = 2;
     int value;
 
-    if (err != ESP_OK) {
-        ESP_LOGI(TAG, "Error (%s) opening NVS handle!: ", esp_err_to_name(err));
+    if (m_err != ESP_OK) {
+        ESP_LOGI(TAG, "Error (%s) opening NVS handle!: ", esp_err_to_name(m_err));
     }
     else {
-        err = handle->get_item(KEY, value);
+        m_err = m_handle->get_item(KEY, value);
 
-        switch (err) {
+        switch (m_err) {
             case ESP_OK:
                 ESP_LOGI(TAG, "NON VOLITILE MEMORY\nStored value = %d", value);
                 returnValue = value; // should be 0 for a setup esp
@@ -88,12 +88,12 @@ int NVStoreHelper::getInt(char *KEY){
 
                 break;
             default :
-                ESP_LOGI(TAG, "Error (%s) reading!: ", esp_err_to_name(err));
+                ESP_LOGI(TAG, "Error (%s) reading!: ", esp_err_to_name(m_err));
                 returnValue = 2;
         }                   
     }
 
-    err = nvs_flash_init();
+    m_err = nvs_flash_init();
 
     return returnValue;
 }
@@ -101,16 +101,16 @@ int NVStoreHelper::getInt(char *KEY){
 
 void NVStoreHelper::writeString(char *KEY, char *VALUE){
     ESP_LOGI(TAG, "writing String to KEY: %s\nValue: %s", KEY, VALUE);
-    err = handle->set_string(KEY, VALUE);
+    m_err = m_handle->set_string(KEY, VALUE);
 
     ESP_LOGI(TAG, "Committing updates in NVS ... ");
-    err = handle->commit();
+    m_err = m_handle->commit();
 }
 
 void NVStoreHelper::writeInt(char *KEY, int VALUE){
     ESP_LOGI(TAG, "writing Int to KEY: %s\nValue: %d", KEY, VALUE);
-    err = handle->set_item(KEY, VALUE);
+    m_err = m_handle->set_item(KEY, VALUE);
 
     ESP_LOGI(TAG, "Committing updates in NVS ... ");
-    err = handle->commit();
+    m_err = m_handle->commit();
 }

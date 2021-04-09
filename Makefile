@@ -5,7 +5,4 @@
 
 PROJECT_NAME := ESP32_AIRCON_TIMER
 
-EXTRA_COMPONENT_DIRS = $(IDF_PATH)/examples/common_components/protocol_examples_common
-
 include $(IDF_PATH)/make/project.mk
-

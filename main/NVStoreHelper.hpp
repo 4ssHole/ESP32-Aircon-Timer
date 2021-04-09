@@ -8,12 +8,12 @@
 
 class NVStoreHelper{
     private:        
-        std::shared_ptr<nvs::NVSHandle> handle;
+        std::shared_ptr<nvs::NVSHandle> m_handle;
 
-        esp_err_t err;
-        esp_err_t result;
+        esp_err_t m_err;
+        esp_err_t m_result;
 
-        char* nvStoreValue;
+        char* m_nvStoreValue;
 
         void initializeNVS();
         void openNVSHandle();

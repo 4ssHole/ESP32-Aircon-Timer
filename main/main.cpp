@@ -9,14 +9,14 @@ Pairing and passwords
 if ntp cannot sync, notify in app and change to time offset only mode
 
 Functionallity:
+Change to randomly select unused ports 
 Store sent times in rtc memory to survive deep sleep
 Store mDNS name and password in persistent memory
 Press and hold a button to start smartconfig 
 
 Hardware: 
 Add leds for status indicators
-
-
+Pairing button for new wifi networks
 
 DONE:
 Get current time from ntp, do not accept requests until time is synced
@@ -26,6 +26,7 @@ Sending epoch to client
 */
 
 #include <string>
+#include <sstream>
 #include <sys/param.h>
 #include <sys/time.h>
 #include "freertos/FreeRTOS.h"
@@ -36,13 +37,13 @@ Sending epoch to client
 #include "esp_event.h"
 #include "esp_log.h"
 #include "esp_netif.h"
-#include "protocol_examples_common.h"
 #include "mdns.h"
 
 #include "esp_smartconfig.h"
 #include "esp_wpa2.h"
 #include "freertos/event_groups.h"
 
+#include "SmartConfig.hpp"
 #include "NVStoreHelper.hpp"
 #include "driver/gpio.h"
 
@@ -56,13 +57,12 @@ Sending epoch to client
 
 static const char *TAG = "MAIN";
 
-static const char *NVS_KEY_mDNSHostName = "mDNSHostName";
-static const char *NVS_VALUE_mDNSHostName = "smartdevice";
+static const char *NVS_KEY_DeviceName = "DeviceName";
+static const char *NVS_VALUE_DeviceName = "smartdevice";
 
 static const char *NVS_KEY_setupMode = "setupComplete";
 static const int NVS_VALUE_setupMode = 0;
 
-static EventGroupHandle_t s_wifi_event_group;
 
 bool setupMode;
 
@@ -71,7 +71,6 @@ bool relayOn = false;
 
 void waitForNTPSync();   
 void start_mdns_service();
-void setupDevice();
 
 static void checkTime(void *pvParameters);
 static void tcp_server_task(void *pvParameters);
@@ -79,62 +78,64 @@ const char* bool_cast(const bool b);
 
 
 extern "C" void app_main(void){
-    NVStoreHelper nvStoreHelper = NVStoreHelper();
+    // NVStoreHelper nvStoreHelper = NVStoreHelper();
+    // gpio_set_direction(relayPin, GPIO_MODE_OUTPUT);
 
-    gpio_set_direction(relayPin, GPIO_MODE_OUTPUT);
+    SmartConfig smartConfig = SmartConfig();
+ 
+    // esp_err_t err = 
+    // switch(err){
+    //     case ESP_OK:
+    //         ESP_LOGI(TAG, "ESP OK");
+    //         break;
+    //     case ESP_ERR_WIFI_NOT_INIT:
+    //         ESP_LOGE(TAG, "ESP_ERR_WIFI_NOT_INIT");
+    //         break;
+    //     case ESP_ERR_WIFI_NOT_STARTED:
+    //         ESP_LOGI(TAG, "ESP_ERR_WIFI_NOT_STARTED");
+    //         break;
+    //     case ESP_ERR_WIFI_CONN:
+    //         ESP_LOGE(TAG, "ESP_ERR_WIFI_CONN");
+    //         break;
+    //     case ESP_ERR_WIFI_SSID:
+    //         ESP_LOGE(TAG, "ESP_ERR_WIFI_SSID");
+    //         break;
+    //     default:
+    //         ESP_LOGE(TAG, "UNKNOWN ERROR");
+    // }
     
-    ESP_ERROR_CHECK(nvs_flash_init());
-    ESP_ERROR_CHECK(esp_netif_init());
-    ESP_ERROR_CHECK(esp_event_loop_create_default());
-    ESP_ERROR_CHECK(example_connect());
+    // ESP_LOGI(TAG, "get string : %s",nvStoreHelper.getString((char *) NVS_KEY_DeviceName).c_str());
 
+    // int test = nvStoreHelper.getInt((char *) NVS_KEY_setupMode);
+    // ESP_LOGI(TAG, "int test : %d", test);
+
+    // switch(test){
+    //     case 1:
+    //         setupMode = true;
+    //         ESP_LOGI(TAG, "IN SETUP MODE");
+    //         break;
+    //     case 0:
+    //         setupMode = false;
+    //         ESP_LOGI(TAG, "IN NORMAL MODE");
+    //         // ESP_ERROR_CHECK(nvs_flash_erase()); // remove when in production
+    //         break;
+    //     case 2:
+    //         ESP_LOGE(TAG, "NVS INT ERROR");
+    //         break;
+    //     default:
+    //         ESP_LOGE(TAG, "NOTHING RETURNED NVS INT ERROR");
+    // }
+
+    // sntp_setoperatingmode(SNTP_OPMODE_POLL);
+    // sntp_setservername(0, "pool.ntp.org");
+    // sntp_init();
+
+    // waitForNTPSync();
+    // start_mdns_service();
     
-    ESP_LOGI(TAG, "get string : %s",nvStoreHelper.getString((char *) NVS_KEY_mDNSHostName).c_str());
-
-    int test = nvStoreHelper.getInt((char *) NVS_KEY_setupMode);
-    ESP_LOGI(TAG, "int test : %d", test);
-
-    switch(test){
-        case 1:
-            setupMode = true;
-            ESP_LOGI(TAG, "IN SETUP MODE");
-            setupDevice();
-
-            break;
-        case 0:
-            setupMode = false;
-            ESP_LOGI(TAG, "IN NORMAL MODE");
-            // ESP_ERROR_CHECK(nvs_flash_erase()); // remove when in production
-
-            break;
-        case 2:
-            ESP_LOGE(TAG, "NVS INT ERROR");
-            
-            break;
-        default:
-            ESP_LOGE(TAG, "NOTHING RETURNED NVS INT ERROR");
-    }
-
-    sntp_setoperatingmode(SNTP_OPMODE_POLL);
-    sntp_setservername(0, "pool.ntp.org");
-    sntp_init();
-
-    waitForNTPSync();
-    start_mdns_service();
-    
-    ESP_LOGI(TAG, "Time now : %lu", time(NULL));   
-
     // xTaskCreate(tcp_server_task, "tcp_server", 4096, (void*)AF_INET, 5, NULL);
     // xTaskCreate(checkTime, "checkTime", 4096, NULL, 5, NULL);
 }
-
-void setupDevice(){
-
-
-    // nvStoreHelper.writeInt((char *) NVS_KEY_setupMode, 0);
-}
-
-
 void checkTime(void *pvParameters){  
     while(1){
         time_t timeNow = time(NULL);
@@ -161,76 +162,37 @@ void checkTime(void *pvParameters){
     }  
     vTaskDelete(NULL);
 }
-
-void start_mdns_service()
-{
+void start_mdns_service(){
     esp_err_t err = mdns_init();
     if (err) {
         printf("MDNS Init failed: %d\n", err);
         return;
     }
 
-    mdns_hostname_set(NVS_VALUE_mDNSHostName);
-    mdns_instance_name_set("A Development ESP32 S2");
+    uint8_t MACAddress[NETIF_MAX_HWADDR_LEN];
+    char MAC[18];
 
-     //add our services
-    mdns_service_add(NULL, "_AirconTimer", "_tcp", 80, NULL, 0);
+    mdns_hostname_set(NVS_VALUE_DeviceName);
+    
+    esp_read_mac(MACAddress, ESP_MAC_WIFI_STA);
+    snprintf(MAC, sizeof(MAC), "%02x:%02x:%02x:%02x:%02x:%02x",
+         MACAddress[0], MACAddress[1], MACAddress[2], MACAddress[3], MACAddress[4], MACAddress[5]);
 
-    //NOTE: services must be added before their properties can be set
-    //use custom instance for the web server
-    mdns_service_instance_name_set("_AirconTimer", "_tcp", "B Development ESP32 S2");
+    ESP_LOGI(TAG, "TEST %s", MAC);
 
     mdns_txt_item_t serviceTxtData[3] = {
-        //add unique board id, maybe mac address
-        {"board","{esp32}"},
-        {"u","user"},
-        {"p","password"}
+        //TODO: add unique board id, maybe mac address
+        {"ModuleVersion", "ESP32-S2"},
+        {"MACAddress", MAC},
+        // {"hasPassword", },
+        // {"isSetup", },
+        {"Name", NVS_VALUE_DeviceName}
     };
-    //set txt data for service (will free and replace current data)
-    mdns_service_txt_set("_AirconTimer", "_tcp", serviceTxtData, 3);
 
-    //change service port
-    mdns_service_port_set("_AirconTimer", "_tcp", 10000);
+
+    ESP_ERROR_CHECK(mdns_service_add("CHANGE TO SET NAME", "_AirconTimer", "_tcp", 10000, serviceTxtData, 3));
 }
-
-static void recieveEpoch(const int sock){
-    int len;
-    char rx_buffer[128];
-
-    do {
-        len = recv(sock, rx_buffer, sizeof(rx_buffer) - 1, 0);
-        setTime = atoi(rx_buffer);
-        if (len < 0) {
-            ESP_LOGE(TAG, "Error occurred during receiving: errno %d", errno);
-        } else if (len == 0) {
-            ESP_LOGW(TAG, "Connection closed");
-        } else {
-            ESP_LOGI(TAG, "setTime : %lu rx_buffer : %s", setTime, rx_buffer);
-        }
-    } while (len > 0);
-}
-
-static void setupVariables(const int sock){
-    int len;
-    char rx_buffer[128];
-    do {
-        len = recv(sock, rx_buffer, sizeof(rx_buffer) - 1, 0);
-        
-        if (len < 0) {
-            ESP_LOGE(TAG, "Error occurred during receiving: errno %d", errno);
-        } else if (len == 0) {
-            ESP_LOGW(TAG, "Connection closed");
-        } else {
-            ESP_LOGI(TAG, "setTime : %lu rx_buffer : %s", setTime, rx_buffer);
-        }
-    } while (len > 0);
-
-
-    setupMode = false;
-}
-
-static void tcp_server_task(void *pvParameters)
-{
+static void tcp_server_task(void *pvParameters){
     char addr_str[128];
     int addr_family = (int)pvParameters;
     int ip_protocol = 0;
@@ -275,7 +237,6 @@ static void tcp_server_task(void *pvParameters)
     }
 
     while (1) {
-
         ESP_LOGI(TAG, "Socket listening");
 
         struct sockaddr_in6 source_addr; // Large enough for both IPv4 or IPv6
@@ -297,13 +258,6 @@ static void tcp_server_task(void *pvParameters)
             ESP_LOGE(TAG, "Error occurred during sending: errno %d", errno);
         }
 
-        if(setupMode){
-            setupVariables(sock);
-        }
-        else{
-            recieveEpoch(sock);
-        }
-
         shutdown(sock, 0);
         close(sock);
     }
@@ -312,14 +266,12 @@ CLEAN_UP:
     close(listen_sock);
     vTaskDelete(NULL);
 }
-
 void waitForNTPSync(){    
     while(time(NULL) < 120){
         ESP_LOGI(TAG, "Time now : %lu", time(NULL));
         sleep(1);
     }
 } 
-
 const char* bool_cast(const bool b) {
     return b ? "1" : "0";
 }
