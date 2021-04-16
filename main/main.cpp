@@ -7,12 +7,15 @@ mDNS server for discovery
 Network discovery in android app possibly using mDNS
 Pairing and passwords
 if ntp cannot sync, notify in app and change to time offset only mode
+scan for ap ssid in nvs, start smartconfig when not found
 
 Functionallity:
 Change to randomly select unused ports 
 Store sent times in rtc memory to survive deep sleep
 Store mDNS name and password in persistent memory
 Press and hold a button to start smartconfig 
+only start tcp server when IP_EVENT_STA_GOT_IP
+tcp server keep ailve and wait on disconnect until smartconfig or change ip
 
 Hardware: 
 Add leds for status indicators
@@ -57,11 +60,11 @@ Sending epoch to client
 
 static const char *TAG = "MAIN";
 
-static const char *NVS_KEY_DeviceName = "DeviceName";
+// static const char *NVS_KEY_DeviceName = "DeviceName";
 static const char *NVS_VALUE_DeviceName = "smartdevice";
 
-static const char *NVS_KEY_setupMode = "setupComplete";
-static const int NVS_VALUE_setupMode = 0;
+// static const char *NVS_KEY_setupMode = "setupComplete";
+// static const int NVS_VALUE_setupMode = 0;
 
 
 bool setupMode;
@@ -73,7 +76,7 @@ void waitForNTPSync();
 void start_mdns_service();
 
 static void checkTime(void *pvParameters);
-static void tcp_server_task(void *pvParameters);
+// static void tcp_server_task(void *pvParameters);
 const char* bool_cast(const bool b);
 
 
@@ -81,7 +84,7 @@ extern "C" void app_main(void){
     // NVStoreHelper nvStoreHelper = NVStoreHelper();
     // gpio_set_direction(relayPin, GPIO_MODE_OUTPUT);
 
-    SmartConfig smartConfig = SmartConfig();
+    SmartConfig::Get();
  
     // esp_err_t err = 
     // switch(err){

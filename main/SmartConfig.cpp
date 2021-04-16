@@ -1,33 +1,30 @@
 /*
-If reason 0 connect succuesfull
-
+    If reason 0 connect succuesfull
 */
 
 #include "SmartConfig.hpp"
 
-static const char *TAG = "smartconfig_example";
-static EventGroupHandle_t s_wifi_event_group;
+const char *SmartConfig::TAG = "Smart Config helper";
+EventGroupHandle_t SmartConfig::s_wifi_event_group = nullptr;
 
-static void event_handler(void* arg, esp_event_base_t event_base, int32_t event_id, void* event_data);
-static void smartconfig_example_task(void * parm);
-static void initialise_wifi();
-
-static const int CONNECTED_BIT = BIT0;
-static const int ESPTOUCH_DONE_BIT = BIT1;
-static const int CONNECT_FAILED = BIT2;
 
 SmartConfig::SmartConfig(){
+    ESP_LOGE(TAG, "test");
+
     ESP_ERROR_CHECK( nvs_flash_init() );
     initialise_wifi();
 }
 
-void smartconfig_example_task(void * parm){
+void SmartConfig::smartconfig_example_task(void * parm){
     EventBits_t uxBits;
     ESP_ERROR_CHECK( esp_smartconfig_set_type(SC_TYPE_ESPTOUCH) );
     ESP_ERROR_CHECK( esp_wifi_set_mode(WIFI_MODE_STA) );
     smartconfig_start_config_t cfg = SMARTCONFIG_START_CONFIG_DEFAULT();
+    
+    ESP_ERROR_CHECK( esp_smartconfig_fast_mode(true) );
     ESP_ERROR_CHECK( esp_smartconfig_start(&cfg) );
     while (1) {
+
         uxBits = xEventGroupWaitBits(s_wifi_event_group, CONNECTED_BIT | ESPTOUCH_DONE_BIT | CONNECT_FAILED, true, false, portMAX_DELAY); 
         if(uxBits & CONNECT_FAILED){
             ESP_LOGI(TAG, "CONNECTION FAILED, try new password");
@@ -45,7 +42,7 @@ void smartconfig_example_task(void * parm){
     }
 }
 
-void event_handler(void* arg, esp_event_base_t event_base, int32_t event_id, void* event_data){
+void SmartConfig::event_handler(void* arg, esp_event_base_t event_base, int32_t event_id, void* event_data){
     if ((event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_START)) {
         xTaskCreate(smartconfig_example_task, "smartconfig_example_task", 4096, NULL, 3, NULL);
     } else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED) {
@@ -53,7 +50,6 @@ void event_handler(void* arg, esp_event_base_t event_base, int32_t event_id, voi
         wifi_event_sta_disconnected_t* event = (wifi_event_sta_disconnected_t*) event_data;
         if( event->reason == 15 || event->reason == 205) {
             ESP_LOGE(TAG, "%d", event->reason);
-            esp_smartconfig_stop();
             xEventGroupSetBits(s_wifi_event_group, CONNECT_FAILED);
 
             //set back to sta mode for smartconfig
@@ -100,7 +96,7 @@ void event_handler(void* arg, esp_event_base_t event_base, int32_t event_id, voi
     }
 }
 
-void initialise_wifi()
+void SmartConfig::initialise_wifi()
 {
     ESP_ERROR_CHECK(esp_netif_init());
     s_wifi_event_group = xEventGroupCreate();

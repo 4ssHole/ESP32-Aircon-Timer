@@ -7,6 +7,14 @@
 #include "esp_log.h"
 
 class NVStoreHelper{
+    public:
+        NVStoreHelper();
+
+        void writeString(char *KEY, char *VALUE);
+        void writeInt(char *KEY, int VALUE);
+        std::string getString(char *KEY);
+        int getInt(char *KEY);
+
     private:        
         std::shared_ptr<nvs::NVSHandle> m_handle;
 
@@ -17,12 +25,4 @@ class NVStoreHelper{
 
         void initializeNVS();
         void openNVSHandle();
-
-    public:
-        NVStoreHelper();
-
-        void writeString(char *KEY, char *VALUE);
-        void writeInt(char *KEY, int VALUE);
-        std::string getString(char *KEY);
-        int getInt(char *KEY);
 };

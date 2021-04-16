@@ -1,3 +1,5 @@
+#pragma once
+
 #include <string.h>
 #include <stdlib.h>
 #include "freertos/FreeRTOS.h"
@@ -12,6 +14,26 @@
 #include "esp_netif.h"
 #include "esp_smartconfig.h"
 
-struct SmartConfig{
-    SmartConfig();
+class SmartConfig{
+    public:
+        SmartConfig(const SmartConfig&) = delete;
+
+        static SmartConfig& Get(){
+            static SmartConfig Instance;
+            return Instance;
+        }
+
+    private:
+        static const char *TAG;
+        static EventGroupHandle_t s_wifi_event_group;
+
+        static void event_handler(void* arg, esp_event_base_t event_base, int32_t event_id, void* event_data);
+        static void smartconfig_example_task(void * parm);
+        static void initialise_wifi();
+
+        static const int CONNECTED_BIT = BIT0;
+        static const int ESPTOUCH_DONE_BIT = BIT1;
+        static const int CONNECT_FAILED = BIT2;
+
+        SmartConfig();
 };
