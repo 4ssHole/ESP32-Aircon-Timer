@@ -60,11 +60,11 @@ Sending epoch to client
 
 static const char *TAG = "MAIN";
 
-// static const char *NVS_KEY_DeviceName = "DeviceName";
-static const char *NVS_VALUE_DeviceName = "smartdevice";
+static const char *NVS_KEY_DeviceName = "DeviceName";
+static const char *NVS_VALUE_DeviceName;
 
-// static const char *NVS_KEY_setupMode = "setupComplete";
-// static const int NVS_VALUE_setupMode = 0;
+static const char *NVS_KEY_setupMode = "setupComplete";
+static const int NVS_VALUE_setupMode = 0;
 
 
 bool setupMode;
@@ -74,39 +74,28 @@ bool relayOn = false;
 
 void waitForNTPSync();   
 void start_mdns_service();
+static void waitForWifi();
 
 static void checkTime(void *pvParameters);
-// static void tcp_server_task(void *pvParameters);
+static void tcp_server_task(void *pvParameters);
 const char* bool_cast(const bool b);
 
+void setupMDNS(){
+
+
+    // Wait for bit for tcp server start and setupmode to be set using eventGroupWaitBits
+    // start_mdns_service();
+}
 
 extern "C" void app_main(void){
-    // NVStoreHelper nvStoreHelper = NVStoreHelper();
-    // gpio_set_direction(relayPin, GPIO_MODE_OUTPUT);
+    ESP_ERROR_CHECK(nvs_flash_erase()); // remove when in production
+    gpio_set_direction(relayPin, GPIO_MODE_OUTPUT);
 
     SmartConfig::Get();
- 
-    // esp_err_t err = 
-    // switch(err){
-    //     case ESP_OK:
-    //         ESP_LOGI(TAG, "ESP OK");
-    //         break;
-    //     case ESP_ERR_WIFI_NOT_INIT:
-    //         ESP_LOGE(TAG, "ESP_ERR_WIFI_NOT_INIT");
-    //         break;
-    //     case ESP_ERR_WIFI_NOT_STARTED:
-    //         ESP_LOGI(TAG, "ESP_ERR_WIFI_NOT_STARTED");
-    //         break;
-    //     case ESP_ERR_WIFI_CONN:
-    //         ESP_LOGE(TAG, "ESP_ERR_WIFI_CONN");
-    //         break;
-    //     case ESP_ERR_WIFI_SSID:
-    //         ESP_LOGE(TAG, "ESP_ERR_WIFI_SSID");
-    //         break;
-    //     default:
-    //         ESP_LOGE(TAG, "UNKNOWN ERROR");
-    // }
+    waitForWifi();
+    waitForNTPSync();
     
+
     // ESP_LOGI(TAG, "get string : %s",nvStoreHelper.getString((char *) NVS_KEY_DeviceName).c_str());
 
     // int test = nvStoreHelper.getInt((char *) NVS_KEY_setupMode);
@@ -120,7 +109,7 @@ extern "C" void app_main(void){
     //     case 0:
     //         setupMode = false;
     //         ESP_LOGI(TAG, "IN NORMAL MODE");
-    //         // ESP_ERROR_CHECK(nvs_flash_erase()); // remove when in production
+    //         ESP_ERROR_CHECK(nvs_flash_erase()); // remove when in production
     //         break;
     //     case 2:
     //         ESP_LOGE(TAG, "NVS INT ERROR");
@@ -129,41 +118,41 @@ extern "C" void app_main(void){
     //         ESP_LOGE(TAG, "NOTHING RETURNED NVS INT ERROR");
     // }
 
-    // sntp_setoperatingmode(SNTP_OPMODE_POLL);
-    // sntp_setservername(0, "pool.ntp.org");
-    // sntp_init();
-
-    // waitForNTPSync();
-    // start_mdns_service();
-    
     // xTaskCreate(tcp_server_task, "tcp_server", 4096, (void*)AF_INET, 5, NULL);
-    // xTaskCreate(checkTime, "checkTime", 4096, NULL, 5, NULL);
+}
+static void waitForWifi(){
+    //TODO make class return the value to us instead of taking it from the class
+    //apparantly thats best practice
+    //ive made no progress for 1-2 weeks on this because of that so fuck it
+    
+    int connectedBit = 0;
+    while(connectedBit == 0){
+        connectedBit = xEventGroupWaitBits(SmartConfig::s_wifi_event_group, SmartConfig::CONNECTED_BIT, true, false, portMAX_DELAY); 
+        
+        if(connectedBit){
+            ESP_LOGI(TAG, "WIFI CONNECTED, CONTINUE");
+        }
+    }
 }
 void checkTime(void *pvParameters){  
+    time_t timeNow;
+    
     while(1){
-        time_t timeNow = time(NULL);
+        timeNow = time(NULL);
 
-        switch(relayOn){
-            case false:
-                if(timeNow < setTime){
-                    relayOn = true;
-                    gpio_set_level(relayPin, relayOn);
-                    ESP_LOGI(TAG, "START RELAY");   
-                }
-            break;
+        if(timeNow < setTime){
+            gpio_set_level(relayPin, 1);
+            ESP_LOGI(TAG, "START RELAY");   
+        }
+        if(timeNow >= setTime){
+            ESP_LOGI(TAG, "Counting : %lu", time(NULL));
+            gpio_set_level(relayPin, 0);
+            ESP_LOGI(TAG, "STOP RELAY");   
+            vTaskDelete(NULL);
+        }
 
-            case true:
-                ESP_LOGI(TAG, "Counting : %lu", time(NULL));
-                if(timeNow >= setTime){
-                    relayOn = false;
-                    gpio_set_level(relayPin, relayOn);
-                    ESP_LOGI(TAG, "STOP RELAY");   
-                }
-            break;
-        } 
-        sleep(1);
+        vTaskDelay(1000);
     }  
-    vTaskDelete(NULL);
 }
 void start_mdns_service(){
     esp_err_t err = mdns_init();
@@ -201,7 +190,6 @@ static void tcp_server_task(void *pvParameters){
     int ip_protocol = 0;
     struct sockaddr_in6 dest_addr;
 
-    start_mdns_service();
 
     if (addr_family == AF_INET) {
         struct sockaddr_in *dest_addr_ip4 = (struct sockaddr_in *)&dest_addr;
@@ -270,9 +258,13 @@ CLEAN_UP:
     vTaskDelete(NULL);
 }
 void waitForNTPSync(){    
+    sntp_setoperatingmode(SNTP_OPMODE_POLL);
+    sntp_setservername(0, "pool.ntp.org");
+    sntp_init();
+    
     while(time(NULL) < 120){
         ESP_LOGI(TAG, "Time now : %lu", time(NULL));
-        sleep(1);
+        vTaskDelay(1000);
     }
 } 
 const char* bool_cast(const bool b) {

@@ -24,10 +24,6 @@ NVStoreHelper::NVStoreHelper(){
     openNVSHandle();
 }
 
-void NVStoreHelper::initializeNVS(){
-    
-}
-
 void NVStoreHelper::openNVSHandle(){
     ESP_LOGI(TAG, "Opening Non-Volatile Storage (NVS) handle... ");
     // Handle will automatically close when going out of scope or when it's reset.

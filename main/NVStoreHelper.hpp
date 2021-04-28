@@ -8,7 +8,12 @@
 
 class NVStoreHelper{
     public:
-        NVStoreHelper();
+        NVStoreHelper(const NVStoreHelper&) = delete;
+
+        static NVStoreHelper& Get(){
+            static NVStoreHelper Instance;
+            return Instance;
+        }  
 
         void writeString(char *KEY, char *VALUE);
         void writeInt(char *KEY, int VALUE);
@@ -16,13 +21,14 @@ class NVStoreHelper{
         int getInt(char *KEY);
 
     private:        
-        std::shared_ptr<nvs::NVSHandle> m_handle;
+        static std::shared_ptr<nvs::NVSHandle> m_handle;
 
-        esp_err_t m_err;
-        esp_err_t m_result;
+        static esp_err_t m_err;
+        static esp_err_t m_result;
 
-        char* m_nvStoreValue;
+        static char* m_nvStoreValue;
 
-        void initializeNVS();
-        void openNVSHandle();
+        static void openNVSHandle();
+        
+        NVStoreHelper();
 };

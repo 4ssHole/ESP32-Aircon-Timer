@@ -1,29 +1,75 @@
-/*
-    If reason 0 connect succuesfull
-*/
-
 #include "SmartConfig.hpp"
 
 const char *SmartConfig::TAG = "Smart Config helper";
 EventGroupHandle_t SmartConfig::s_wifi_event_group = nullptr;
 
-
 SmartConfig::SmartConfig(){
-    ESP_LOGE(TAG, "test");
-
     ESP_ERROR_CHECK( nvs_flash_init() );
-    initialise_wifi();
-}
 
+    ESP_ERROR_CHECK(esp_netif_init());
+    s_wifi_event_group = xEventGroupCreate();
+    ESP_ERROR_CHECK(esp_event_loop_create_default());
+    esp_netif_t *sta_netif = esp_netif_create_default_wifi_sta();
+    assert(sta_netif && "sta_netif assert false"); //assert terminates application on false 
+
+    wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
+
+    ESP_ERROR_CHECK( esp_wifi_init(&cfg) );
+    
+    wifi_config_t conf;
+    esp_wifi_get_config(ESP_IF_WIFI_STA, &conf);
+    
+    ESP_ERROR_CHECK( esp_wifi_set_mode(WIFI_MODE_STA) );
+    ESP_ERROR_CHECK( esp_wifi_start() );  
+
+    //check if ssid present in nvs
+    if(isblank((char *)conf.sta.ssid)){
+        ESP_LOGI(TAG, "\nSSID :%s\n", conf.sta.ssid);
+    }
+
+    // if(conf.sta.password == nullptr) ESP_LOGI(TAG, "Password :%s\n", conf.sta.password);
+
+    ESP_LOGI(TAG, "\nSSID :%s\nPassword :%s\n", conf.sta.ssid, conf.sta.password);
+}
+void SmartConfig::connectWifi(){
+    switch(esp_wifi_connect()){
+        case ESP_OK:
+            ESP_LOGE(TAG, "ESP_OK");
+            break;
+        case ESP_ERR_WIFI_SSID:
+            ESP_LOGE(TAG, "ESP_ERR_WIFI_SSID");
+            ESP_ERROR_CHECK( esp_wifi_stop() );  
+            ESP_ERROR_CHECK( esp_event_handler_register(WIFI_EVENT, ESP_EVENT_ANY_ID, &event_handler, NULL) );
+            ESP_ERROR_CHECK( esp_event_handler_register(IP_EVENT, IP_EVENT_STA_GOT_IP, &event_handler, NULL) );
+            ESP_ERROR_CHECK( esp_event_handler_register(SC_EVENT, ESP_EVENT_ANY_ID, &event_handler, NULL) );
+            ESP_ERROR_CHECK( esp_wifi_start() );        
+            break;
+        case ESP_ERR_WIFI_CONN:
+            ESP_LOGE(TAG, "ESP_ERR_WIFI_CONN");
+            break;
+        case ESP_ERR_WIFI_NOT_STARTED:
+            ESP_LOGE(TAG, "ESP_ERR_WIFI_NOT_STARTED");
+            break;
+        case ESP_ERR_WIFI_NOT_INIT:
+            ESP_LOGE(TAG, "ESP_ERR_WIFI_NOT_INIT");
+            break;
+        case ESP_ERR_WIFI_MODE:
+            ESP_LOGE(TAG, "ESP_ERR_WIFI_MODE");
+            break;
+        default:
+            ESP_LOGE(TAG, "WIFI CONNECT ERROR");
+            break;
+    }
+}
 void SmartConfig::smartconfig_example_task(void * parm){
     EventBits_t uxBits;
     ESP_ERROR_CHECK( esp_smartconfig_set_type(SC_TYPE_ESPTOUCH) );
-    ESP_ERROR_CHECK( esp_wifi_set_mode(WIFI_MODE_STA) );
     smartconfig_start_config_t cfg = SMARTCONFIG_START_CONFIG_DEFAULT();
     
     ESP_ERROR_CHECK( esp_smartconfig_fast_mode(true) );
     ESP_ERROR_CHECK( esp_smartconfig_start(&cfg) );
     while (1) {
+        ESP_LOGI(TAG, "WAITING %d", CONNECTED_BIT);
 
         uxBits = xEventGroupWaitBits(s_wifi_event_group, CONNECTED_BIT | ESPTOUCH_DONE_BIT | CONNECT_FAILED, true, false, portMAX_DELAY); 
         if(uxBits & CONNECT_FAILED){
@@ -41,7 +87,6 @@ void SmartConfig::smartconfig_example_task(void * parm){
         }
     }
 }
-
 void SmartConfig::event_handler(void* arg, esp_event_base_t event_base, int32_t event_id, void* event_data){
     if ((event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_START)) {
         xTaskCreate(smartconfig_example_task, "smartconfig_example_task", 4096, NULL, 3, NULL);
@@ -54,9 +99,10 @@ void SmartConfig::event_handler(void* arg, esp_event_base_t event_base, int32_t 
 
             //set back to sta mode for smartconfig
             //TODO Send failure packet(?) to Android app to notify failed password
+            //impossible since smartconfig can only receive and not send as far as I can tell
         }
         else{
-            esp_wifi_connect();
+            connectWifi();
         }
         xEventGroupClearBits(s_wifi_event_group, CONNECTED_BIT);
     } else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP) {
@@ -89,27 +135,9 @@ void SmartConfig::event_handler(void* arg, esp_event_base_t event_base, int32_t 
         ESP_ERROR_CHECK(esp_wifi_disconnect());
         ESP_ERROR_CHECK(esp_wifi_set_config(ESP_IF_WIFI_STA, &wifi_config));
 
-        ESP_ERROR_CHECK(esp_wifi_connect());
+        connectWifi();
 
     } else if (event_base == SC_EVENT && event_id == SC_EVENT_SEND_ACK_DONE) {
         xEventGroupSetBits(s_wifi_event_group, ESPTOUCH_DONE_BIT);
     }
-}
-
-void SmartConfig::initialise_wifi()
-{
-    ESP_ERROR_CHECK(esp_netif_init());
-    s_wifi_event_group = xEventGroupCreate();
-    ESP_ERROR_CHECK(esp_event_loop_create_default());
-    esp_netif_t *sta_netif = esp_netif_create_default_wifi_sta();
-    assert(sta_netif && "sta_netif assert false"); //assert terminates application on false 
-
-    wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
-    ESP_ERROR_CHECK( esp_wifi_init(&cfg) );
-
-    ESP_ERROR_CHECK( esp_event_handler_register(WIFI_EVENT, ESP_EVENT_ANY_ID, &event_handler, NULL) );
-    ESP_ERROR_CHECK( esp_event_handler_register(IP_EVENT, IP_EVENT_STA_GOT_IP, &event_handler, NULL) );
-    ESP_ERROR_CHECK( esp_event_handler_register(SC_EVENT, ESP_EVENT_ANY_ID, &event_handler, NULL) );
-    
-    ESP_ERROR_CHECK( esp_wifi_start() );   
 }
