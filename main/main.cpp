@@ -60,9 +60,6 @@ Sending epoch to client
 
 static const char *TAG = "MAIN";
 
-static const char *NVS_KEY_DeviceName = "DeviceName";
-static const char *NVS_VALUE_DeviceName;
-
 static const char *NVS_KEY_setupMode = "setupComplete";
 static const int NVS_VALUE_setupMode = 0;
 
@@ -73,30 +70,35 @@ time_t setTime = 0;
 bool relayOn = false;
 
 void waitForNTPSync();   
-void start_mdns_service();
 static void waitForWifi();
+void start_mdns_service(char* hostName);
 
 static void checkTime(void *pvParameters);
 static void tcp_server_task(void *pvParameters);
 const char* bool_cast(const bool b);
 
 void setupMDNS(){
+    const char *NVS_KEY_DeviceName = "DeviceName";
 
+    std::string StoredName = NVStoreHelper().getString(NVS_KEY_DeviceName);
+    if('\0' == StoredName[0]){
+        ESP_LOGE(TAG, "NVSTORE EMPTY");
+    }
+    else{
+        ESP_LOGE(TAG, "NVSTORE HAS VALUE");
+    }
 
     // Wait for bit for tcp server start and setupmode to be set using eventGroupWaitBits
-    // start_mdns_service();
+    // start_mdns_service(NVS_VALUE_DeviceName);
 }
 
 extern "C" void app_main(void){
-    ESP_ERROR_CHECK(nvs_flash_erase()); // remove when in production
+    // ESP_ERROR_CHECK(nvs_flash_erase()); // remove when in production
     gpio_set_direction(relayPin, GPIO_MODE_OUTPUT);
 
-    SmartConfig::Get();
     waitForWifi();
     waitForNTPSync();
-    
-
-    // ESP_LOGI(TAG, "get string : %s",nvStoreHelper.getString((char *) NVS_KEY_DeviceName).c_str());
+    setupMDNS();
 
     // int test = nvStoreHelper.getInt((char *) NVS_KEY_setupMode);
     // ESP_LOGI(TAG, "int test : %d", test);
@@ -120,11 +122,13 @@ extern "C" void app_main(void){
 
     // xTaskCreate(tcp_server_task, "tcp_server", 4096, (void*)AF_INET, 5, NULL);
 }
-static void waitForWifi(){
+void waitForWifi(){
     //TODO make class return the value to us instead of taking it from the class
     //apparantly thats best practice
     //ive made no progress for 1-2 weeks on this because of that so fuck it
     
+    SmartConfig::Get();
+
     int connectedBit = 0;
     while(connectedBit == 0){
         connectedBit = xEventGroupWaitBits(SmartConfig::s_wifi_event_group, SmartConfig::CONNECTED_BIT, true, false, portMAX_DELAY); 
@@ -154,7 +158,7 @@ void checkTime(void *pvParameters){
         vTaskDelay(1000);
     }  
 }
-void start_mdns_service(){
+void start_mdns_service(char* hostName){
     esp_err_t err = mdns_init();
     if (err) {
         printf("MDNS Init failed: %d\n", err);
@@ -164,7 +168,7 @@ void start_mdns_service(){
     uint8_t MACAddress[NETIF_MAX_HWADDR_LEN];
     char MAC[18];
 
-    mdns_hostname_set(NVS_VALUE_DeviceName);
+    mdns_hostname_set(hostName);
     
     esp_read_mac(MACAddress, ESP_MAC_WIFI_STA);
     snprintf(MAC, sizeof(MAC), "%02x:%02x:%02x:%02x:%02x:%02x",
@@ -178,7 +182,7 @@ void start_mdns_service(){
         {"MACAddress", MAC},
         // {"hasPassword", },
         // {"isSetup", },
-        {"Name", NVS_VALUE_DeviceName}
+        {"Name", hostName}
     };
 
 
@@ -264,7 +268,7 @@ void waitForNTPSync(){
     
     while(time(NULL) < 120){
         ESP_LOGI(TAG, "Time now : %lu", time(NULL));
-        vTaskDelay(1000);
+        vTaskDelay(100);
     }
 } 
 const char* bool_cast(const bool b) {

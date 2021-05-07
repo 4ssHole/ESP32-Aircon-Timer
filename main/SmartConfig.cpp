@@ -15,26 +15,32 @@ SmartConfig::SmartConfig(){
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
 
     ESP_ERROR_CHECK( esp_wifi_init(&cfg) );
+    ESP_ERROR_CHECK( esp_wifi_set_mode(WIFI_MODE_STA));
+
     
     wifi_config_t conf;
     esp_wifi_get_config(ESP_IF_WIFI_STA, &conf);
     
-    ESP_ERROR_CHECK( esp_wifi_set_mode(WIFI_MODE_STA) );
-    ESP_ERROR_CHECK( esp_wifi_start() );  
-
-    //check if ssid present in nvs
-    if(isblank((char *)conf.sta.ssid)){
+    if(conf.sta.ssid[0] != '\0'){
         ESP_LOGI(TAG, "\nSSID :%s\n", conf.sta.ssid);
+        ESP_LOGI(TAG, "\nPassword :%s\n", conf.sta.password);
+
+        ESP_ERROR_CHECK( esp_wifi_start() );        
+        connectWifi();
     }
-
-    // if(conf.sta.password == nullptr) ESP_LOGI(TAG, "Password :%s\n", conf.sta.password);
-
-    ESP_LOGI(TAG, "\nSSID :%s\nPassword :%s\n", conf.sta.ssid, conf.sta.password);
+    else if(conf.sta.ssid != nullptr && conf.sta.ssid[0] == '\0'){
+        ESP_LOGE(TAG, "\nSSID is blank");
+        ESP_ERROR_CHECK( esp_event_handler_register(WIFI_EVENT, ESP_EVENT_ANY_ID, &event_handler, NULL) );
+        ESP_ERROR_CHECK( esp_event_handler_register(IP_EVENT, IP_EVENT_STA_GOT_IP, &event_handler, NULL) );
+        ESP_ERROR_CHECK( esp_event_handler_register(SC_EVENT, ESP_EVENT_ANY_ID, &event_handler, NULL) );
+        ESP_ERROR_CHECK( esp_wifi_start() );     
+    }
 }
 void SmartConfig::connectWifi(){
     switch(esp_wifi_connect()){
         case ESP_OK:
             ESP_LOGE(TAG, "ESP_OK");
+            xEventGroupSetBits(s_wifi_event_group, CONNECTED_BIT);
             break;
         case ESP_ERR_WIFI_SSID:
             ESP_LOGE(TAG, "ESP_ERR_WIFI_SSID");
@@ -57,11 +63,13 @@ void SmartConfig::connectWifi(){
             ESP_LOGE(TAG, "ESP_ERR_WIFI_MODE");
             break;
         default:
-            ESP_LOGE(TAG, "WIFI CONNECT ERROR");
+            ESP_LOGE(TAG, "UNKNOWN WIFI CONNECT ERROR");
             break;
     }
 }
 void SmartConfig::smartconfig_example_task(void * parm){
+    ESP_LOGI(TAG, "SMART CONFIG TASK");
+
     EventBits_t uxBits;
     ESP_ERROR_CHECK( esp_smartconfig_set_type(SC_TYPE_ESPTOUCH) );
     smartconfig_start_config_t cfg = SMARTCONFIG_START_CONFIG_DEFAULT();
@@ -73,8 +81,11 @@ void SmartConfig::smartconfig_example_task(void * parm){
 
         uxBits = xEventGroupWaitBits(s_wifi_event_group, CONNECTED_BIT | ESPTOUCH_DONE_BIT | CONNECT_FAILED, true, false, portMAX_DELAY); 
         if(uxBits & CONNECT_FAILED){
+            //TODO SET LED TO BLINK or something
             ESP_LOGI(TAG, "CONNECTION FAILED, try new password");
             esp_smartconfig_stop();
+            
+            xEventGroupClearBits(s_wifi_event_group, CONNECT_FAILED);
             ESP_ERROR_CHECK( esp_smartconfig_start(&cfg) );
         }
         if(uxBits & CONNECTED_BIT) {
@@ -88,6 +99,7 @@ void SmartConfig::smartconfig_example_task(void * parm){
     }
 }
 void SmartConfig::event_handler(void* arg, esp_event_base_t event_base, int32_t event_id, void* event_data){
+    ESP_LOGI(TAG, "\nEVENT BASE : %s\nEVENT ID : %d",event_base, event_id);
     if ((event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_START)) {
         xTaskCreate(smartconfig_example_task, "smartconfig_example_task", 4096, NULL, 3, NULL);
     } else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED) {
@@ -97,7 +109,6 @@ void SmartConfig::event_handler(void* arg, esp_event_base_t event_base, int32_t 
             ESP_LOGE(TAG, "%d", event->reason);
             xEventGroupSetBits(s_wifi_event_group, CONNECT_FAILED);
 
-            //set back to sta mode for smartconfig
             //TODO Send failure packet(?) to Android app to notify failed password
             //impossible since smartconfig can only receive and not send as far as I can tell
         }

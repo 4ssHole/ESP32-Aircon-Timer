@@ -30,7 +30,7 @@ void NVStoreHelper::openNVSHandle(){
     m_handle = nvs::open_nvs_handle("storage", NVS_READWRITE, &m_result);    
 }
 
-std::string NVStoreHelper::getString(char *KEY){
+std::string NVStoreHelper::getString(const char *KEY){
     std::string returnValue = "error";
     if (m_err != ESP_OK) ESP_LOGI(TAG, "Error (%s) opening NVS handle!: ", esp_err_to_name(m_err));
     else {
@@ -95,7 +95,7 @@ int NVStoreHelper::getInt(char *KEY){
 }
 
 
-void NVStoreHelper::writeString(char *KEY, char *VALUE){
+void NVStoreHelper::writeString(const char *KEY, const char *VALUE){
     ESP_LOGI(TAG, "writing String to KEY: %s\nValue: %s", KEY, VALUE);
     m_err = m_handle->set_string(KEY, VALUE);
 

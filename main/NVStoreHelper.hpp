@@ -7,28 +7,22 @@
 #include "esp_log.h"
 
 class NVStoreHelper{
+
     public:
-        NVStoreHelper(const NVStoreHelper&) = delete;
+        NVStoreHelper();
 
-        static NVStoreHelper& Get(){
-            static NVStoreHelper Instance;
-            return Instance;
-        }  
-
-        void writeString(char *KEY, char *VALUE);
+        void writeString(const char *KEY, const char *VALUE);
         void writeInt(char *KEY, int VALUE);
-        std::string getString(char *KEY);
+        std::string getString(const char *KEY);
         int getInt(char *KEY);
 
     private:        
-        static std::shared_ptr<nvs::NVSHandle> m_handle;
+        std::shared_ptr<nvs::NVSHandle> m_handle;
 
-        static esp_err_t m_err;
-        static esp_err_t m_result;
+        esp_err_t m_err;
+        esp_err_t m_result;
 
-        static char* m_nvStoreValue;
+        char* m_nvStoreValue;  
 
-        static void openNVSHandle();
-        
-        NVStoreHelper();
+        void openNVSHandle();
 };
