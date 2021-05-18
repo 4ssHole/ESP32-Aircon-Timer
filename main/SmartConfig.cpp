@@ -35,6 +35,11 @@ SmartConfig::SmartConfig(){
         ESP_ERROR_CHECK( esp_event_handler_register(SC_EVENT, ESP_EVENT_ANY_ID, &event_handler, NULL) );
         ESP_ERROR_CHECK( esp_wifi_start() );     
     }
+
+    esp_err_t err;
+    if ((err = tcpip_adapter_set_hostname(TCPIP_ADAPTER_IF_STA, "ESP32-S2 TEST")) != ESP_OK) {
+            fprintf(stderr, "Err: %s", esp_err_to_name(err));
+    }
 }
 void SmartConfig::connectWifi(){
     switch(esp_wifi_connect()){

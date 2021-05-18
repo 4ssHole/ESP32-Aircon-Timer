@@ -10,7 +10,7 @@ if ntp cannot sync, notify in app and change to time offset only mode
 scan for ap ssid in nvs, start smartconfig when not found
 
 Functionallity:
-Change to randomly select unused ports 
+Change to randomly select unused ports to avoid conflicts
 Store sent times in rtc memory to survive deep sleep
 Store mDNS name and password in persistent memory
 Press and hold a button to start smartconfig 
@@ -58,70 +58,47 @@ Sending epoch to client
 #define PORT 10000
 #define relayPin GPIO_NUM_18
 
+enum TCP_Types{
+    null, type_time, type_mDNS_Name, 
+};
+
 static const char *TAG = "MAIN";
 
 static const char *NVS_KEY_setupMode = "setupComplete";
 static const int NVS_VALUE_setupMode = 0;
 
+static const char *NVS_KEY_DeviceName = "DeviceName";
+static const char *NVS_VALUE_DeviceName = "DefaultName";
 
-bool setupMode;
+EventGroupHandle_t s_tcp_event_group = xEventGroupCreate();
+static const int TCP_SERVER_STARTED = BIT0;
+static const int MDNS_NAME_SET = BIT1;
+static const int NTP_SYNC_COMPLETE = BIT2;
 
-time_t setTime = 0;
-bool relayOn = false;
 
-void waitForNTPSync();   
 static void waitForWifi();
+void setMDNSName(std::string recievedName);
+void setupMDNS();
 void start_mdns_service(char* hostName);
 
+static void waitForNTPSync(void *pvParameters);   
 static void checkTime(void *pvParameters);
 static void tcp_server_task(void *pvParameters);
 const char* bool_cast(const bool b);
 
-void setupMDNS(){
-    const char *NVS_KEY_DeviceName = "DeviceName";
-
-    std::string StoredName = NVStoreHelper().getString(NVS_KEY_DeviceName);
-    if('\0' == StoredName[0]){
-        ESP_LOGE(TAG, "NVSTORE EMPTY");
-    }
-    else{
-        ESP_LOGE(TAG, "NVSTORE HAS VALUE");
-    }
-
-    // Wait for bit for tcp server start and setupmode to be set using eventGroupWaitBits
-    // start_mdns_service(NVS_VALUE_DeviceName);
-}
 
 extern "C" void app_main(void){
-    // ESP_ERROR_CHECK(nvs_flash_erase()); // remove when in production
+    // ESP_ERROR_CHECK(nvs_flash_erase()); // ctrl, e, r
     gpio_set_direction(relayPin, GPIO_MODE_OUTPUT);
 
     waitForWifi();
-    waitForNTPSync();
+
+    xTaskCreate(waitForNTPSync, "ntp_sync", 4096, NULL, 5, NULL);
+    xTaskCreate(tcp_server_task, "tcp_server", 4096, (void*)AF_INET, 5, NULL);
+
     setupMDNS();
-
-    // int test = nvStoreHelper.getInt((char *) NVS_KEY_setupMode);
-    // ESP_LOGI(TAG, "int test : %d", test);
-
-    // switch(test){
-    //     case 1:
-    //         setupMode = true;
-    //         ESP_LOGI(TAG, "IN SETUP MODE");
-    //         break;
-    //     case 0:
-    //         setupMode = false;
-    //         ESP_LOGI(TAG, "IN NORMAL MODE");
-    //         ESP_ERROR_CHECK(nvs_flash_erase()); // remove when in production
-    //         break;
-    //     case 2:
-    //         ESP_LOGE(TAG, "NVS INT ERROR");
-    //         break;
-    //     default:
-    //         ESP_LOGE(TAG, "NOTHING RETURNED NVS INT ERROR");
-    // }
-
-    // xTaskCreate(tcp_server_task, "tcp_server", 4096, (void*)AF_INET, 5, NULL);
 }
+
 void waitForWifi(){
     //TODO make class return the value to us instead of taking it from the class
     //apparantly thats best practice
@@ -138,8 +115,11 @@ void waitForWifi(){
         }
     }
 }
-void checkTime(void *pvParameters){  
+
+void checkTime(void *pvParameters){ 
     time_t timeNow;
+    time_t setTime = (*( time_t* ) pvParameters);
+    ESP_LOGI("CHECK TIME", "%lu", setTime);
     
     while(1){
         timeNow = time(NULL);
@@ -155,9 +135,10 @@ void checkTime(void *pvParameters){
             vTaskDelete(NULL);
         }
 
-        vTaskDelay(1000);
+        vTaskDelay(100); //100 is 1 second
     }  
 }
+
 void start_mdns_service(char* hostName){
     esp_err_t err = mdns_init();
     if (err) {
@@ -188,12 +169,72 @@ void start_mdns_service(char* hostName){
 
     ESP_ERROR_CHECK(mdns_service_add("CHANGE TO SET NAME", "_AirconTimer", "_tcp", 10000, serviceTxtData, 3));
 }
+
+static void parseTCP(char *rx_buffer, int *len){
+    ESP_LOGI(TAG, "Received %d bytes: %s", *len, rx_buffer);
+
+    std::string dirtyBuffer(rx_buffer);
+    std::string cleanedBuffer;
+
+    if(rx_buffer[0] != '\0') 
+         cleanedBuffer = dirtyBuffer.substr(1, (dirtyBuffer.length()-1));
+
+    ESP_LOGI("Parse TCP", "\nCleanStr:%s\nRaw:%s", cleanedBuffer.c_str(), rx_buffer);
+
+    switch(rx_buffer[0]){
+        case type_time:
+            {
+                EventBits_t uxBits = xEventGroupWaitBits(s_tcp_event_group, MDNS_NAME_SET | NTP_SYNC_COMPLETE, false, true, 1);
+                static time_t sentTime = stoi(cleanedBuffer);
+
+                ESP_LOGI("TIME", "%s", cleanedBuffer.c_str());
+                ESP_LOGI("TIME", "%lu", sentTime);
+ 
+                if( ( uxBits & ( MDNS_NAME_SET | NTP_SYNC_COMPLETE ) ) == ( MDNS_NAME_SET | NTP_SYNC_COMPLETE ) ) {
+                    xTaskCreate(checkTime, "time_check", 4096, (void*) &sentTime, 5, NULL);
+                }
+            }
+            break;
+        case type_mDNS_Name:
+            setMDNSName(cleanedBuffer);
+            break;
+    }
+}
+
+void recieveTCP(const int *sock){
+    int len;
+    char rx_buffer[256];
+
+    do {
+        len = recv(*sock, rx_buffer, sizeof(rx_buffer) - 1, 0);
+        if (len < 0) {
+            ESP_LOGE(TAG, "Error occurred during receiving: errno %d", errno);
+        } else if (len == 0) {
+            ESP_LOGW(TAG, "Connection closed");
+        } else {
+            rx_buffer[len] = 0; // Null-terminate whatever is received and treat it like a string
+            parseTCP(rx_buffer, &len);
+
+            // send() can return less bytes than supplied length.
+            // Walk-around for robust implementation. 
+            int to_write = len;
+            while (to_write > 0) {
+
+                int written = send(*sock, rx_buffer + (len - to_write), to_write, 0);
+                if (written < 0) {
+                    ESP_LOGE(TAG, "Error occurred during sending: errno %d", errno);
+                }
+                to_write -= written;
+            }
+        }
+    } while (len > 0);
+}
+
 static void tcp_server_task(void *pvParameters){
     char addr_str[128];
     int addr_family = (int)pvParameters;
     int ip_protocol = 0;
     struct sockaddr_in6 dest_addr;
-
 
     if (addr_family == AF_INET) {
         struct sockaddr_in *dest_addr_ip4 = (struct sockaddr_in *)&dest_addr;
@@ -231,6 +272,8 @@ static void tcp_server_task(void *pvParameters){
         goto CLEAN_UP;
     }
 
+    xEventGroupSetBits(s_tcp_event_group, TCP_SERVER_STARTED);
+
     while (1) {
         ESP_LOGI(TAG, "Socket listening");
 
@@ -247,11 +290,7 @@ static void tcp_server_task(void *pvParameters){
         else if (source_addr.sin6_family == PF_INET6) inet6_ntoa_r(source_addr.sin6_addr, addr_str, sizeof(addr_str) - 1);
         
         ESP_LOGI(TAG, "Socket accepted ip address: %s", addr_str);
-
-        int written = send(sock, bool_cast(setupMode), 1, 0);
-        if (written < 0) {
-            ESP_LOGE(TAG, "Error occurred during sending: errno %d", errno);
-        }
+        recieveTCP(&sock);
 
         shutdown(sock, 0);
         close(sock);
@@ -261,16 +300,45 @@ CLEAN_UP:
     close(listen_sock);
     vTaskDelete(NULL);
 }
-void waitForNTPSync(){    
+
+static void waitForNTPSync(void *pvParameters){    
     sntp_setoperatingmode(SNTP_OPMODE_POLL);
     sntp_setservername(0, "pool.ntp.org");
     sntp_init();
     
     while(time(NULL) < 120){
-        ESP_LOGI(TAG, "Time now : %lu", time(NULL));
+        // ESP_LOGI(TAG, "Time now : %lu", time(NULL));
         vTaskDelay(100);
     }
+
+    ESP_LOGW(TAG, "NTP SYNC COMPLETE");
+    xEventGroupSetBits(s_tcp_event_group, NTP_SYNC_COMPLETE);
+    vTaskDelete(NULL);
 } 
+
+void setMDNSName(std::string recievedName){
+    if(recievedName[0] != '\0' && recievedName.length() <= 256) //maximum length for an mdns hostname is 256 including \0 nvs strings are 4000
+        NVStoreHelper().writeString(NVS_KEY_DeviceName, recievedName.c_str());
+}
+
+void setupMDNS(){
+    std::string StoredName = NVStoreHelper().getString(NVS_KEY_DeviceName);
+
+    if('\0' == StoredName[0]){ //TODO: More robust empty string checking
+        ESP_LOGE(TAG, "NVSTORE EMPTY");
+        //send device name to android app, handle the case of a blank device name in app 
+        xEventGroupWaitBits(s_tcp_event_group, MDNS_NAME_SET, true, false, portMAX_DELAY); 
+    }
+    else{
+        // Wait for bit for tcp server start and setupmode to be set using eventGroupWaitBits
+        ESP_LOGE(TAG, "NVSTORE HAS VALUE");
+        xEventGroupSetBits(s_tcp_event_group, MDNS_NAME_SET);
+    }
+
+    xEventGroupWaitBits(s_tcp_event_group, TCP_SERVER_STARTED, true, false, portMAX_DELAY); 
+    start_mdns_service((char *) StoredName.c_str());
+}
+
 const char* bool_cast(const bool b) {
     return b ? "1" : "0";
 }
