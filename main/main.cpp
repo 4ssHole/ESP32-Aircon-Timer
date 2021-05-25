@@ -70,6 +70,8 @@ static const int NVS_VALUE_setupMode = 0;
 static const char *NVS_KEY_DeviceName = "DeviceName";
 static const char *NVS_VALUE_DeviceName = "DefaultName";
 
+static time_t setTime = 0;
+
 EventGroupHandle_t s_tcp_event_group = xEventGroupCreate();
 static const int TCP_SERVER_STARTED = BIT0;
 static const int MDNS_NAME_SET = BIT1;
@@ -89,7 +91,7 @@ const char* bool_cast(const bool b);
 
 extern "C" void app_main(void){
     // ESP_ERROR_CHECK(nvs_flash_erase()); // ctrl, e, r
-    gpio_set_direction(relayPin, GPIO_MODE_OUTPUT);
+    gpio_set_direction(relayPin, GPIO_MODE_INPUT_OUTPUT);
 
     waitForWifi();
 
@@ -109,34 +111,28 @@ void waitForWifi(){
     int connectedBit = 0;
     while(connectedBit == 0){
         connectedBit = xEventGroupWaitBits(SmartConfig::s_wifi_event_group, SmartConfig::CONNECTED_BIT, true, false, portMAX_DELAY); 
-        
-        if(connectedBit){
-            ESP_LOGI(TAG, "WIFI CONNECTED, CONTINUE");
-        }
     }
 }
 
-void checkTime(void *pvParameters){ 
+static void checkTime(void *pvParameters){ 
     time_t timeNow;
-    time_t setTime = (*( time_t* ) pvParameters);
-    ESP_LOGI("CHECK TIME", "%lu", setTime);
     
     while(1){
         timeNow = time(NULL);
 
-        if(timeNow < setTime){
+        if( ( timeNow < setTime ) && ( gpio_get_level(relayPin) == 0) ){
             gpio_set_level(relayPin, 1);
             ESP_LOGI(TAG, "START RELAY");   
-        }
-        if(timeNow >= setTime){
             ESP_LOGI(TAG, "Counting : %lu", time(NULL));
+        }
+        else if( ( timeNow >= setTime ) && ( gpio_get_level(relayPin) == 1) ){
             gpio_set_level(relayPin, 0);
             ESP_LOGI(TAG, "STOP RELAY");   
-            vTaskDelete(NULL);
         }
 
         vTaskDelay(100); //100 is 1 second
     }  
+    vTaskDelete(NULL);
 }
 
 void start_mdns_service(char* hostName){
@@ -179,19 +175,17 @@ static void parseTCP(char *rx_buffer, int *len){
     if(rx_buffer[0] != '\0') 
          cleanedBuffer = dirtyBuffer.substr(1, (dirtyBuffer.length()-1));
 
-    ESP_LOGI("Parse TCP", "\nCleanStr:%s\nRaw:%s", cleanedBuffer.c_str(), rx_buffer);
-
     switch(rx_buffer[0]){
         case type_time:
             {
                 EventBits_t uxBits = xEventGroupWaitBits(s_tcp_event_group, MDNS_NAME_SET | NTP_SYNC_COMPLETE, false, true, 1);
-                static time_t sentTime = stoi(cleanedBuffer);
 
                 ESP_LOGI("TIME", "%s", cleanedBuffer.c_str());
-                ESP_LOGI("TIME", "%lu", sentTime);
- 
-                if( ( uxBits & ( MDNS_NAME_SET | NTP_SYNC_COMPLETE ) ) == ( MDNS_NAME_SET | NTP_SYNC_COMPLETE ) ) {
-                    xTaskCreate(checkTime, "time_check", 4096, (void*) &sentTime, 5, NULL);
+                
+                if(rx_buffer[1] != null){
+                    if( ( uxBits & ( MDNS_NAME_SET | NTP_SYNC_COMPLETE ) ) == ( MDNS_NAME_SET | NTP_SYNC_COMPLETE ) ) {
+                        setTime = stoi(cleanedBuffer);
+                    }
                 }
             }
             break;
@@ -212,15 +206,16 @@ void recieveTCP(const int *sock){
         } else if (len == 0) {
             ESP_LOGW(TAG, "Connection closed");
         } else {
-            rx_buffer[len] = 0; // Null-terminate whatever is received and treat it like a string
-            parseTCP(rx_buffer, &len);
+            // rx_buffer[len] = 0; // Null-terminate whatever is received and treat it like a string
+            std::string timePrevious = '\01'+std::to_string(setTime)+'\n';
+            char const *pchar = timePrevious.c_str();  //use char const* as target type
 
-            // send() can return less bytes than supplied length.
-            // Walk-around for robust implementation. 
-            int to_write = len;
+            ESP_LOGW(TAG, "TimePrevious : %s", timePrevious.c_str());
+
+            int to_write = strlen(pchar);
             while (to_write > 0) {
 
-                int written = send(*sock, rx_buffer + (len - to_write), to_write, 0);
+                int written  = send(*sock, pchar, to_write, 0);
                 if (written < 0) {
                     ESP_LOGE(TAG, "Error occurred during sending: errno %d", errno);
                 }
@@ -228,6 +223,8 @@ void recieveTCP(const int *sock){
             }
         }
     } while (len > 0);
+
+    parseTCP(rx_buffer, &len);
 }
 
 static void tcp_server_task(void *pvParameters){
@@ -312,6 +309,8 @@ static void waitForNTPSync(void *pvParameters){
     }
 
     ESP_LOGW(TAG, "NTP SYNC COMPLETE");
+    xTaskCreate(checkTime, "time_check", 4096, NULL, 5, NULL);
+
     xEventGroupSetBits(s_tcp_event_group, NTP_SYNC_COMPLETE);
     vTaskDelete(NULL);
 } 
