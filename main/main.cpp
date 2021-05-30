@@ -48,6 +48,7 @@ Sending epoch to client
 
 #include "SmartConfig.hpp"
 #include "NVStoreHelper.hpp"
+#include "TCPServer.hpp"
 #include "driver/gpio.h"
 
 #include "lwip/err.h"
@@ -58,10 +59,6 @@ Sending epoch to client
 #define PORT 10000
 #define relayPin GPIO_NUM_18
 
-enum TCP_Types{
-    null, type_time, type_mDNS_Name, 
-};
-
 static const char *TAG = "MAIN";
 
 static const char *NVS_KEY_setupMode = "setupComplete";
@@ -71,11 +68,15 @@ static const char *NVS_KEY_DeviceName = "DeviceName";
 static const char *NVS_VALUE_DeviceName = "DefaultName";
 
 static time_t setTime = 0;
+static bool relayOn = false;
 
 EventGroupHandle_t s_tcp_event_group = xEventGroupCreate();
 static const int TCP_SERVER_STARTED = BIT0;
 static const int MDNS_NAME_SET = BIT1;
 static const int NTP_SYNC_COMPLETE = BIT2;
+
+static TaskHandle_t serverHandle = NULL;
+static TaskHandle_t mainHandle;
 
 
 static void waitForWifi();
@@ -87,6 +88,7 @@ static void waitForNTPSync(void *pvParameters);
 static void checkTime(void *pvParameters);
 static void tcp_server_task(void *pvParameters);
 const char* bool_cast(const bool b);
+static void TCPReceive(void *pvParameters);
 
 
 extern "C" void app_main(void){
@@ -95,10 +97,45 @@ extern "C" void app_main(void){
 
     waitForWifi();
 
-    xTaskCreate(waitForNTPSync, "ntp_sync", 4096, NULL, 5, NULL);
-    xTaskCreate(tcp_server_task, "tcp_server", 4096, (void*)AF_INET, 5, NULL);
+    // xTaskCreate(waitForNTPSync, "ntp_sync", 1024, NULL, 5, NULL);
+    xTaskCreate(TCPReceive, "tcp_server", 4096, NULL, 5, &serverHandle);
 
-    setupMDNS();
+    // setupMDNS();
+}
+
+static void TCPReceive(void *pvParameters){
+    TCPServer tcp(PORT, (void*)AF_INET);
+    mainHandle = tcp.start(serverHandle);
+
+    char *rx_buffer;
+
+    while(1){
+        ulTaskNotifyTake( pdTRUE, portMAX_DELAY );
+        rx_buffer = tcp.getRX();
+
+        ESP_LOGI(TAG, "MESSAGE RECIEVED: %s", rx_buffer);
+            switch(rx_buffer[0]){
+                case tcp.type_time:
+                    {
+                        std::string test = rx_buffer;
+                        tcp.transmit(test.append("\n").c_str());
+                    }
+                    break;
+                case tcp.type_mDNS_Name:
+                    tcp.transmit("mdns \n");
+                    break;
+                case tcp.relay_status:
+                    tcp.transmit("relay \n");
+                    break;
+                default:
+                    tcp.transmit("testing 12345432 \n");
+                    break;
+            }
+
+        xTaskNotifyGive(mainHandle);
+    }
+
+    vTaskDelete(NULL);
 }
 
 void waitForWifi(){
@@ -119,18 +156,19 @@ static void checkTime(void *pvParameters){
     
     while(1){
         timeNow = time(NULL);
+        relayOn = gpio_get_level(relayPin);
 
-        if( ( timeNow < setTime ) && ( gpio_get_level(relayPin) == 0) ){
+        if( ( timeNow < setTime ) && ( !relayOn ) ){
             gpio_set_level(relayPin, 1);
             ESP_LOGI(TAG, "START RELAY");   
             ESP_LOGI(TAG, "Counting : %lu", time(NULL));
         }
-        else if( ( timeNow >= setTime ) && ( gpio_get_level(relayPin) == 1) ){
+        else if( ( timeNow >= setTime ) && ( relayOn ) ){
             gpio_set_level(relayPin, 0);
             ESP_LOGI(TAG, "STOP RELAY");   
         }
 
-        vTaskDelay(100); //100 is 1 second
+        vTaskDelay(50); //100 is 1 second
     }  
     vTaskDelete(NULL);
 }
@@ -164,138 +202,6 @@ void start_mdns_service(char* hostName){
 
 
     ESP_ERROR_CHECK(mdns_service_add("CHANGE TO SET NAME", "_AirconTimer", "_tcp", 10000, serviceTxtData, 3));
-}
-
-static void parseTCP(char *rx_buffer, int *len){
-    ESP_LOGI(TAG, "Received %d bytes: %s", *len, rx_buffer);
-
-    std::string dirtyBuffer(rx_buffer);
-    std::string cleanedBuffer;
-
-    if(rx_buffer[0] != '\0') 
-         cleanedBuffer = dirtyBuffer.substr(1, (dirtyBuffer.length()-1));
-
-    switch(rx_buffer[0]){
-        case type_time:
-            {
-                EventBits_t uxBits = xEventGroupWaitBits(s_tcp_event_group, MDNS_NAME_SET | NTP_SYNC_COMPLETE, false, true, 1);
-
-                ESP_LOGI("TIME", "%s", cleanedBuffer.c_str());
-                
-                if(rx_buffer[1] != null){
-                    if( ( uxBits & ( MDNS_NAME_SET | NTP_SYNC_COMPLETE ) ) == ( MDNS_NAME_SET | NTP_SYNC_COMPLETE ) ) {
-                        setTime = stoi(cleanedBuffer);
-                    }
-                }
-            }
-            break;
-        case type_mDNS_Name:
-            setMDNSName(cleanedBuffer);
-            break;
-    }
-}
-
-void recieveTCP(const int *sock){
-    int len;
-    char rx_buffer[256];
-
-    do {
-        len = recv(*sock, rx_buffer, sizeof(rx_buffer) - 1, 0);
-        if (len < 0) {
-            ESP_LOGE(TAG, "Error occurred during receiving: errno %d", errno);
-        } else if (len == 0) {
-            ESP_LOGW(TAG, "Connection closed");
-        } else {
-            // rx_buffer[len] = 0; // Null-terminate whatever is received and treat it like a string
-            std::string timePrevious = '\01'+std::to_string(setTime)+'\n';
-            char const *pchar = timePrevious.c_str();  //use char const* as target type
-
-            ESP_LOGW(TAG, "TimePrevious : %s", timePrevious.c_str());
-
-            int to_write = strlen(pchar);
-            while (to_write > 0) {
-
-                int written  = send(*sock, pchar, to_write, 0);
-                if (written < 0) {
-                    ESP_LOGE(TAG, "Error occurred during sending: errno %d", errno);
-                }
-                to_write -= written;
-            }
-        }
-    } while (len > 0);
-
-    parseTCP(rx_buffer, &len);
-}
-
-static void tcp_server_task(void *pvParameters){
-    char addr_str[128];
-    int addr_family = (int)pvParameters;
-    int ip_protocol = 0;
-    struct sockaddr_in6 dest_addr;
-
-    if (addr_family == AF_INET) {
-        struct sockaddr_in *dest_addr_ip4 = (struct sockaddr_in *)&dest_addr;
-        dest_addr_ip4->sin_addr.s_addr = htonl(INADDR_ANY);
-        dest_addr_ip4->sin_family = AF_INET;
-        dest_addr_ip4->sin_port = htons(PORT);
-        ip_protocol = IPPROTO_IP;
-    } else if (addr_family == AF_INET6) {
-        bzero(&dest_addr.sin6_addr.un, sizeof(dest_addr.sin6_addr.un));
-        dest_addr.sin6_family = AF_INET6;
-        dest_addr.sin6_port = htons(PORT);
-        ip_protocol = IPPROTO_IPV6;
-    }
-
-    int listen_sock = socket(addr_family, SOCK_STREAM, ip_protocol);
-    if (listen_sock < 0) {
-        ESP_LOGE(TAG, "Unable to create socket: errno %d", errno);
-        vTaskDelete(NULL);
-        return;
-    }
-
-    ESP_LOGI(TAG, "Socket created");
-
-    int err = bind(listen_sock, (struct sockaddr *)&dest_addr, sizeof(dest_addr));
-    if (err != 0) {
-        ESP_LOGE(TAG, "Socket unable to bind: errno %d", errno);
-        ESP_LOGE(TAG, "IPPROTO: %d", addr_family);
-        goto CLEAN_UP;
-    }
-    ESP_LOGI(TAG, "Socket bound, port %d", PORT);
-
-    err = listen(listen_sock, 1);
-    if (err != 0) {
-        ESP_LOGE(TAG, "Error occurred during listen: errno %d", errno);
-        goto CLEAN_UP;
-    }
-
-    xEventGroupSetBits(s_tcp_event_group, TCP_SERVER_STARTED);
-
-    while (1) {
-        ESP_LOGI(TAG, "Socket listening");
-
-        struct sockaddr_in6 source_addr; // Large enough for both IPv4 or IPv6
-        uint addr_len = sizeof(source_addr);
-        int sock = accept(listen_sock, (struct sockaddr *)&source_addr, &addr_len);
-        if (sock < 0) {
-            ESP_LOGE(TAG, "Unable to accept connection: errno %d", errno);
-            break;
-        }
-
-        // Convert ip address to string
-        if (source_addr.sin6_family == PF_INET) inet_ntoa_r(((struct sockaddr_in *)&source_addr)->sin_addr.s_addr, addr_str, sizeof(addr_str) - 1);
-        else if (source_addr.sin6_family == PF_INET6) inet6_ntoa_r(source_addr.sin6_addr, addr_str, sizeof(addr_str) - 1);
-        
-        ESP_LOGI(TAG, "Socket accepted ip address: %s", addr_str);
-        recieveTCP(&sock);
-
-        shutdown(sock, 0);
-        close(sock);
-    }
-
-CLEAN_UP:
-    close(listen_sock);
-    vTaskDelete(NULL);
 }
 
 static void waitForNTPSync(void *pvParameters){    
