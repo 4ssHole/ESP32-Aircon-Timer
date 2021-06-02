@@ -103,10 +103,12 @@ CLEAN_UP:
 
 void TCPServer::recieveTCP(){
     int len;
+    memset(rx_buffer, 0, sizeof(rx_buffer));
 
     do {
+
         len = recv(sock, rx_buffer, sizeof(rx_buffer) - 1, 0);
-        ESP_LOGI(TAG, "%d", len);
+        ESP_LOGI(TAG, "Received :%s, bytes:%d", rx_buffer, len);
         if (len < 0) {
             ESP_LOGE(TAG, "Error occurred during receiving: errno %d", errno);
         } else if (len == 0) {
