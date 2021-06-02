@@ -37,7 +37,7 @@ void TCPServer::transmit(const char *buffer){
 }
 
 void TCPServer::run(void *pvParameters){
-char addr_str[128];
+    char addr_str[128];
     int addr_family = (int)pvParameters;
     int ip_protocol = 0;
     struct sockaddr_in6 dest_addr;

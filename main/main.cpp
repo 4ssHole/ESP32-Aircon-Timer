@@ -70,7 +70,7 @@ static const char *NVS_VALUE_DeviceName = "DefaultName";
 static time_t setTime = 0;
 static bool relayOn = false;
 
-EventGroupHandle_t s_tcp_event_group = xEventGroupCreate();
+EventGroupHandle_t s_general_event_group = xEventGroupCreate();
 static const int TCP_SERVER_STARTED = BIT0;
 static const int MDNS_NAME_SET = BIT1;
 static const int NTP_SYNC_COMPLETE = BIT2;
@@ -79,14 +79,13 @@ static TaskHandle_t serverHandle = NULL;
 static TaskHandle_t mainHandle;
 
 
-static void waitForWifi();
+static void setupWiFi();
 void setMDNSName(std::string recievedName);
 void setupMDNS();
 void start_mdns_service(char* hostName);
 
 static void waitForNTPSync(void *pvParameters);   
 static void checkTime(void *pvParameters);
-static void tcp_server_task(void *pvParameters);
 const char* bool_cast(const bool b);
 static void TCPReceive(void *pvParameters);
 
@@ -95,12 +94,12 @@ extern "C" void app_main(void){
     // ESP_ERROR_CHECK(nvs_flash_erase()); // ctrl, e, r
     gpio_set_direction(relayPin, GPIO_MODE_INPUT_OUTPUT);
 
-    waitForWifi();
+    setupWiFi();
 
     // xTaskCreate(waitForNTPSync, "ntp_sync", 1024, NULL, 5, NULL);
     xTaskCreate(TCPReceive, "tcp_server", 4096, NULL, 5, &serverHandle);
-
-    // setupMDNS();
+    xTaskCreate(checkTime, "check_time", 2048, NULL, 3, NULL);
+    setupMDNS();
 }
 
 static void TCPReceive(void *pvParameters){
@@ -117,18 +116,20 @@ static void TCPReceive(void *pvParameters){
             switch(rx_buffer[0]){
                 case tcp.type_time:
                     {
-                        std::string test = rx_buffer;
-                        tcp.transmit(test.append("\n").c_str());
+                        setTime = std::stoi(rx_buffer+1);
+                        ESP_LOGI(TAG, "%lu", setTime);
+                        tcp.transmit(std::to_string(setTime).append("\n").c_str());
                     }
                     break;
                 case tcp.type_mDNS_Name:
+                    setMDNSName(rx_buffer+1); //+1 should bypass first character which is the identifier but idk for sure
                     tcp.transmit("mdns \n");
                     break;
                 case tcp.relay_status:
-                    tcp.transmit("relay \n");
+                    tcp.transmit(relayOn ? "1\n" : "0\n");
                     break;
                 default:
-                    tcp.transmit("testing 12345432 \n");
+                    tcp.transmit("Unknown message type \n");
                     break;
             }
 
@@ -138,7 +139,7 @@ static void TCPReceive(void *pvParameters){
     vTaskDelete(NULL);
 }
 
-void waitForWifi(){
+void setupWiFi(){
     //TODO make class return the value to us instead of taking it from the class
     //apparantly thats best practice
     //ive made no progress for 1-2 weeks on this because of that so fuck it
@@ -201,7 +202,7 @@ void start_mdns_service(char* hostName){
     };
 
 
-    ESP_ERROR_CHECK(mdns_service_add("CHANGE TO SET NAME", "_AirconTimer", "_tcp", 10000, serviceTxtData, 3));
+    ESP_ERROR_CHECK(mdns_service_add(NULL, "_AirconTimer", "_tcp", PORT, serviceTxtData, 3));
 }
 
 static void waitForNTPSync(void *pvParameters){    
@@ -217,11 +218,12 @@ static void waitForNTPSync(void *pvParameters){
     ESP_LOGW(TAG, "NTP SYNC COMPLETE");
     xTaskCreate(checkTime, "time_check", 4096, NULL, 5, NULL);
 
-    xEventGroupSetBits(s_tcp_event_group, NTP_SYNC_COMPLETE);
+    xEventGroupSetBits(s_general_event_group, NTP_SYNC_COMPLETE);
     vTaskDelete(NULL);
 } 
 
 void setMDNSName(std::string recievedName){
+    ESP_LOGI(TAG, "MDNS Name set to : %s", recievedName.c_str());
     if(recievedName[0] != '\0' && recievedName.length() <= 256) //maximum length for an mdns hostname is 256 including \0 nvs strings are 4000
         NVStoreHelper().writeString(NVS_KEY_DeviceName, recievedName.c_str());
 }
@@ -232,18 +234,14 @@ void setupMDNS(){
     if('\0' == StoredName[0]){ //TODO: More robust empty string checking
         ESP_LOGE(TAG, "NVSTORE EMPTY");
         //send device name to android app, handle the case of a blank device name in app 
-        xEventGroupWaitBits(s_tcp_event_group, MDNS_NAME_SET, true, false, portMAX_DELAY); 
+        xEventGroupWaitBits(s_general_event_group, MDNS_NAME_SET, true, false, portMAX_DELAY); 
     }
     else{
         // Wait for bit for tcp server start and setupmode to be set using eventGroupWaitBits
         ESP_LOGE(TAG, "NVSTORE HAS VALUE");
-        xEventGroupSetBits(s_tcp_event_group, MDNS_NAME_SET);
+        xEventGroupSetBits(s_general_event_group, MDNS_NAME_SET);
     }
 
-    xEventGroupWaitBits(s_tcp_event_group, TCP_SERVER_STARTED, true, false, portMAX_DELAY); 
+    xEventGroupWaitBits(s_general_event_group, TCP_SERVER_STARTED, true, false, portMAX_DELAY); 
     start_mdns_service((char *) StoredName.c_str());
-}
-
-const char* bool_cast(const bool b) {
-    return b ? "1" : "0";
 }
