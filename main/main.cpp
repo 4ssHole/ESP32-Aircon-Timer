@@ -91,7 +91,7 @@ static void TCPReceive(void *pvParameters);
 
 
 extern "C" void app_main(void){
-    // ESP_ERROR_CHECK(nvs_flash_erase()); // ctrl, e, r
+    ESP_ERROR_CHECK(nvs_flash_erase()); // ctrl, e, r
     gpio_set_direction(relayPin, GPIO_MODE_INPUT_OUTPUT);
 
     setupWiFi();

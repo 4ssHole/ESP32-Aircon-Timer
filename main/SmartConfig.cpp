@@ -19,7 +19,7 @@ SmartConfig::SmartConfig(){
 
     
     wifi_config_t conf;
-    esp_wifi_get_config(ESP_IF_WIFI_STA, &conf);
+    esp_wifi_get_config(WIFI_IF_STA, &conf);
     
     if(conf.sta.ssid[0] != '\0'){
         ESP_LOGI(TAG, "\nSSID :%s\n", conf.sta.ssid);
@@ -34,11 +34,6 @@ SmartConfig::SmartConfig(){
         ESP_ERROR_CHECK( esp_event_handler_register(IP_EVENT, IP_EVENT_STA_GOT_IP, &event_handler, NULL) );
         ESP_ERROR_CHECK( esp_event_handler_register(SC_EVENT, ESP_EVENT_ANY_ID, &event_handler, NULL) );
         ESP_ERROR_CHECK( esp_wifi_start() );     
-    }
-
-    esp_err_t err;
-    if ((err = tcpip_adapter_set_hostname(TCPIP_ADAPTER_IF_STA, "ESP32-S2 TEST")) != ESP_OK) {
-            fprintf(stderr, "Err: %s", esp_err_to_name(err));
     }
 }
 void SmartConfig::connectWifi(){
@@ -149,7 +144,7 @@ void SmartConfig::event_handler(void* arg, esp_event_base_t event_base, int32_t 
         ESP_LOGI(TAG, "PASSWORD:%s", password);
 
         ESP_ERROR_CHECK(esp_wifi_disconnect());
-        ESP_ERROR_CHECK(esp_wifi_set_config(ESP_IF_WIFI_STA, &wifi_config));
+        ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_config));
 
         connectWifi();
 
