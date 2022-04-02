@@ -1,6 +1,6 @@
 {
     "idf.adapterTargetName": "esp32s2",
-    "idf.portWin": "COM3",
+    "idf.portWin": "COM8",
     "idf.flashType": "UART",
     "files.associations": {
         "xlocale": "c",
@@ -91,5 +91,9 @@
         "string_view": "cpp",
         "cinttypes": "cpp",
         "*.ipp": "cpp"
-    }
+    },
+    "idf.openOcdConfigs": [
+        "interface/ftdi/esp32_devkitj_v1.cfg",
+        "target/esp32s2.cfg"
+    ]
 }

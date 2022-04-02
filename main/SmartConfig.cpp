@@ -71,7 +71,7 @@ void SmartConfig::smartconfig_example_task(void * parm){
     ESP_LOGI(TAG, "SMART CONFIG TASK");
 
     EventBits_t uxBits;
-    ESP_ERROR_CHECK( esp_smartconfig_set_type(SC_TYPE_ESPTOUCH) );
+    ESP_ERROR_CHECK( esp_smartconfig_set_type(SC_TYPE_ESPTOUCH_V2) );
     smartconfig_start_config_t cfg = SMARTCONFIG_START_CONFIG_DEFAULT();
     
     ESP_ERROR_CHECK( esp_smartconfig_fast_mode(true) );

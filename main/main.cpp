@@ -91,12 +91,14 @@ static void TCPReceive(void *pvParameters);
 
 
 extern "C" void app_main(void){
-    ESP_ERROR_CHECK(nvs_flash_erase()); // ctrl, e, r
+    // ESP_ERROR_CHECK(nvs_flash_erase()); // ctrl, e, r
     gpio_set_direction(relayPin, GPIO_MODE_INPUT_OUTPUT);
 
     setupWiFi();
 
     // xTaskCreate(waitForNTPSync, "ntp_sync", 1024, NULL, 5, NULL);
+    // xEventGroupWaitBits(s_general_event_group, NTP_SYNC_COMPLETE, true, false, portMAX_DELAY); 
+
     xTaskCreate(TCPReceive, "tcp_server", 4096, NULL, 5, &serverHandle);
     xTaskCreate(checkTime, "check_time", 2048, NULL, 3, NULL);
     setupMDNS();
@@ -105,6 +107,8 @@ extern "C" void app_main(void){
 static void TCPReceive(void *pvParameters){
     TCPServer tcp(PORT, (void*)AF_INET);
     mainHandle = tcp.start(serverHandle);
+
+    xEventGroupSetBits(s_general_event_group, TCP_SERVER_STARTED);
 
     char *rx_buffer;
 
@@ -126,7 +130,7 @@ static void TCPReceive(void *pvParameters){
                     tcp.transmit("mdns \n");
                     break;
                 case tcp.relay_status:
-                    tcp.transmit(relayOn ? "1\n" : "0\n");
+                    tcp.transmit(((relayOn ? "1" : "0") + (std::to_string(setTime) + "\n")).c_str());
                     break;
                 default:
                     tcp.transmit("Unknown message type \n");
