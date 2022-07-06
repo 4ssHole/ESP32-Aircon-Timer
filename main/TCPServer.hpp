@@ -15,11 +15,11 @@ class TCPServer{
         TCPServer(int Port, void *PvParameters);
 
         enum TCP_Types{
-            null, type_time, type_mDNS_Name, relay_status
+            null, type_time, type_mDNS_Name, type_status
         };
 
         TaskHandle_t &start(TaskHandle_t &serverHandle);
-        static void transmit(const char *buffer);
+        static void transmit(int type, const char *buffer);
         char *getRX();
 
     private:    

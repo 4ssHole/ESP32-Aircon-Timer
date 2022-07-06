@@ -57,7 +57,7 @@ Sending epoch to client
 #include <lwip/netdb.h>
 
 #define PORT 10000
-#define relayPin GPIO_NUM_18
+#define relayPin GPIO_NUM_21
 
 static const char *TAG = "MAIN";
 
@@ -96,11 +96,11 @@ extern "C" void app_main(void){
 
     setupWiFi();
 
-    // xTaskCreate(waitForNTPSync, "ntp_sync", 1024, NULL, 5, NULL);
-    // xEventGroupWaitBits(s_general_event_group, NTP_SYNC_COMPLETE, true, false, portMAX_DELAY); 
+    xTaskCreate(waitForNTPSync, "ntp_sync", 4096, NULL, 5, NULL);
+    xEventGroupWaitBits(s_general_event_group, NTP_SYNC_COMPLETE, true, false, portMAX_DELAY); 
 
     xTaskCreate(TCPReceive, "tcp_server", 4096, NULL, 5, &serverHandle);
-    xTaskCreate(checkTime, "check_time", 2048, NULL, 3, NULL);
+    xTaskCreate(checkTime, "check_time", 4096, NULL, 3, NULL);
     setupMDNS();
 }
 
@@ -116,24 +116,26 @@ static void TCPReceive(void *pvParameters){
         ulTaskNotifyTake( pdTRUE, portMAX_DELAY );
         rx_buffer = tcp.getRX();
 
-        ESP_LOGI(TAG, "MESSAGE RECIEVED: %s", rx_buffer);
+        ESP_LOGI(TAG, "MESSAGE RECEIVED: %s", rx_buffer);
             switch(rx_buffer[0]){
                 case tcp.type_time:
                     {
                         setTime = std::stoi(rx_buffer+1);
                         ESP_LOGI(TAG, "%lu", setTime);
-                        tcp.transmit(std::to_string(setTime).append("\n").c_str());
+                        tcp.transmit(tcp.type_time, std::to_string(setTime).append("\n").c_str());
                     }
                     break;
                 case tcp.type_mDNS_Name:
+                    ESP_LOGI(TAG, "MDNS NAME");
                     setMDNSName(rx_buffer+1); //+1 should bypass first character which is the identifier but idk for sure
-                    tcp.transmit("mdns \n");
+                    tcp.transmit(tcp.type_mDNS_Name, "mdns\n");
                     break;
-                case tcp.relay_status:
-                    tcp.transmit(((relayOn ? "1" : "0") + (std::to_string(setTime) + "\n")).c_str());
+                case tcp.type_status:
+                    ESP_LOGI(TAG, "SENDING STATUS");
+                    tcp.transmit(tcp.type_status, ((relayOn ? "1" : "0") + (std::to_string(setTime) + "\n")).c_str());
                     break;
                 default:
-                    tcp.transmit("Unknown message type \n");
+                    tcp.transmit(tcp.null, "Unknown message type\n");
                     break;
             }
 
@@ -215,7 +217,7 @@ static void waitForNTPSync(void *pvParameters){
     sntp_init();
     
     while(time(NULL) < 120){
-        // ESP_LOGI(TAG, "Time now : %lu", time(NULL));
+        ESP_LOGI(TAG, "Time now : %lu", time(NULL));
         vTaskDelay(100);
     }
 

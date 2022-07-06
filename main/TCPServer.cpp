@@ -24,11 +24,12 @@ TaskHandle_t &TCPServer::start(TaskHandle_t &serverHandle){
     return MainHandle;
 }
 
-void TCPServer::transmit(const char *buffer){
+void TCPServer::transmit(int type, const char *buffer){
+    send(sock, &type, 1, 0);
     int to_write = strlen(buffer);
     while (to_write > 0) {
 
-        int written  = send(sock, buffer, to_write, 0);
+        int written = send(sock, buffer, to_write, 0);
         if (written < 0) {
             ESP_LOGE(TAG, "Error occurred during sending: errno %d", errno);
         }
