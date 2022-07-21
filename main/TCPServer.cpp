@@ -10,9 +10,6 @@ static char rx_buffer[256];
 static TaskHandle_t ServerHandle;
 static TaskHandle_t MainHandle = NULL;
 
-int err, listen_sock;
-char addr_str[128];
-
 
 TCPServer::TCPServer(int Port, void *PvParameters){
     PORT=Port;
@@ -20,35 +17,6 @@ TCPServer::TCPServer(int Port, void *PvParameters){
 }
 
 TaskHandle_t &TCPServer::start(TaskHandle_t &serverHandle){
-    int addr_family = (int)pvParameters;
-    int ip_protocol = 0;
-    struct sockaddr_in6 dest_addr;
-
-    if (addr_family == AF_INET) {
-        struct sockaddr_in *dest_addr_ip4 = (struct sockaddr_in *)&dest_addr;
-        dest_addr_ip4->sin_addr.s_addr = htonl(INADDR_ANY);
-        dest_addr_ip4->sin_family = AF_INET;
-        dest_addr_ip4->sin_port = htons(PORT);
-        ip_protocol = IPPROTO_IP;
-    }
-
-    listen_sock = socket(addr_family, SOCK_STREAM, ip_protocol);
-    if (listen_sock < 0) {
-        ESP_LOGE(TAG, "Unable to create socket: errno %d", errno);
-        vTaskDelete(NULL);
-        return MainHandle;
-    }
-
-    ESP_LOGI(TAG, "Socket created");
-
-    err = bind(listen_sock, (struct sockaddr *)&dest_addr, sizeof(dest_addr));
-    if (err != 0) {
-        ESP_LOGE(TAG, "Socket unable to bind: errno %d", errno);
-        ESP_LOGE(TAG, "IPPROTO: %d", addr_family);
-        return MainHandle;
-    }
-    ESP_LOGI(TAG, "Socket bound, port %d", PORT);
-
     xTaskCreate(run, "tcp_server", 4096, (void*)AF_INET, 5, &MainHandle); 
 
     ServerHandle = serverHandle;
@@ -70,12 +38,43 @@ void TCPServer::transmit(int type, const char *buffer){
 }
 
 void TCPServer::run(void *pvParameters){
+    char addr_str[128];
+    int addr_family = (int)pvParameters;
+    int ip_protocol = 0;
+    struct sockaddr_in6 dest_addr;
+
+    if (addr_family == AF_INET) {
+        struct sockaddr_in *dest_addr_ip4 = (struct sockaddr_in *)&dest_addr;
+        dest_addr_ip4->sin_addr.s_addr = htonl(INADDR_ANY);
+        dest_addr_ip4->sin_family = AF_INET;
+        dest_addr_ip4->sin_port = htons(PORT);
+        ip_protocol = IPPROTO_IP;
+    }
+
+    int listen_sock = socket(addr_family, SOCK_STREAM, ip_protocol);
+    if (listen_sock < 0) {
+        ESP_LOGE(TAG, "Unable to create socket: errno %d", errno);
+        vTaskDelete(NULL);
+        return;
+    }
+
+    ESP_LOGI(TAG, "Socket created");
+
+    int err = bind(listen_sock, (struct sockaddr *)&dest_addr, sizeof(dest_addr));
+    if (err != 0) {
+        ESP_LOGE(TAG, "Socket unable to bind: errno %d", errno);
+        ESP_LOGE(TAG, "IPPROTO: %d", addr_family);
+        goto CLEAN_UP;
+    }
+    ESP_LOGI(TAG, "Socket bound, port %d", PORT);
+
+    err = listen(listen_sock, 1);
+    if (err != 0) {
+        ESP_LOGE(TAG, "Error occurred during listen: errno %d", errno);
+        goto CLEAN_UP;
+    }
+
     while (1) {
-        err = listen(listen_sock, 1);
-        if (err != 0) {
-            ESP_LOGE(TAG, "Error occurred during listen: errno %d", errno);
-            goto CLEAN_UP;
-        }
         ESP_LOGI(TAG, "Socket listening");
 
         struct sockaddr_in6 source_addr; // Large enough for both IPv4 or IPv6
@@ -100,7 +99,7 @@ void TCPServer::run(void *pvParameters){
 
 CLEAN_UP:
     close(listen_sock);
-    vTaskDelete(NULL); 
+    vTaskDelete(NULL);
 }
 
 void TCPServer::recieveTCP(){
