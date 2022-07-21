@@ -1,6 +1,6 @@
 {
     "idf.adapterTargetName": "esp32s2",
-    "idf.portWin": "COM8",
+    "idf.portWin": "COM9",
     "idf.flashType": "UART",
     "files.associations": {
         "xlocale": "c",

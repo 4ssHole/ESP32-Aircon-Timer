@@ -77,6 +77,7 @@ static const int NTP_SYNC_COMPLETE = BIT2;
 
 static TaskHandle_t serverHandle = NULL;
 static TaskHandle_t mainHandle;
+EventGroupHandle_t s_wifi_event_group;
 
 
 static void setupWiFi();
@@ -88,20 +89,36 @@ static void waitForNTPSync(void *pvParameters);
 static void checkTime(void *pvParameters);
 const char* bool_cast(const bool b);
 static void TCPReceive(void *pvParameters);
-
+void main_event_handler(void* arg, esp_event_base_t event_base, int32_t event_id, void* event_data);
 
 extern "C" void app_main(void){
+
     // ESP_ERROR_CHECK(nvs_flash_erase()); // ctrl, e, r
     gpio_set_direction(relayPin, GPIO_MODE_INPUT_OUTPUT);
 
     setupWiFi();
 
+    s_wifi_event_group = xEventGroupCreate();
+    esp_event_loop_create_default();
+
+    esp_event_handler_register(WIFI_EVENT, ESP_EVENT_ANY_ID, &main_event_handler, NULL);
+    esp_event_handler_register(IP_EVENT, IP_EVENT_STA_GOT_IP, &main_event_handler, NULL);
+
     xTaskCreate(waitForNTPSync, "ntp_sync", 4096, NULL, 5, NULL);
     xEventGroupWaitBits(s_general_event_group, NTP_SYNC_COMPLETE, true, false, portMAX_DELAY); 
 
     xTaskCreate(TCPReceive, "tcp_server", 4096, NULL, 5, &serverHandle);
-    xTaskCreate(checkTime, "check_time", 4096, NULL, 3, NULL);
     setupMDNS();
+}
+
+void main_event_handler(void* arg, esp_event_base_t event_base, int32_t event_id, void* event_data)
+{
+    if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED) {
+        wifi_event_sta_disconnected_t* disconnect_reason = (wifi_event_sta_disconnected_t*) event_data;
+
+        ESP_LOGE(TAG, "disconnect %i", disconnect_reason->reason);
+        esp_wifi_connect();
+    } 
 }
 
 static void TCPReceive(void *pvParameters){
@@ -109,7 +126,6 @@ static void TCPReceive(void *pvParameters){
     mainHandle = tcp.start(serverHandle);
 
     xEventGroupSetBits(s_general_event_group, TCP_SERVER_STARTED);
-
     char *rx_buffer;
 
     while(1){
@@ -168,13 +184,13 @@ static void checkTime(void *pvParameters){
         if( ( timeNow < setTime ) && ( !relayOn ) ){
             gpio_set_level(relayPin, 1);
             ESP_LOGI(TAG, "START RELAY");   
-            ESP_LOGI(TAG, "Counting : %lu", time(NULL));
         }
         else if( ( timeNow >= setTime ) && ( relayOn ) ){
             gpio_set_level(relayPin, 0);
             ESP_LOGI(TAG, "STOP RELAY");   
         }
 
+        // ESP_LOGI(TAG, "Counting : %lu", time(NULL));
         vTaskDelay(50); //100 is 1 second
     }  
     vTaskDelete(NULL);
