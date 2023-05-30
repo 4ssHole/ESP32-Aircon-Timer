@@ -17,7 +17,7 @@ TCPServer::TCPServer(int Port, void *PvParameters){
 }
 
 TaskHandle_t &TCPServer::start(TaskHandle_t &serverHandle){
-    xTaskCreate(run, "tcp_server", 4096, (void*)AF_INET, 5, &MainHandle); 
+    xTaskCreate(run, "tcp_server", 8192, (void*)AF_INET, 5, &MainHandle); 
 
     ServerHandle = serverHandle;
 
@@ -78,7 +78,7 @@ void TCPServer::run(void *pvParameters){
         ESP_LOGI(TAG, "Socket listening");
 
         struct sockaddr_in6 source_addr; // Large enough for both IPv4 or IPv6
-        uint addr_len = sizeof(source_addr);
+        socklen_t addr_len = sizeof(source_addr);
         sock = accept(listen_sock, (struct sockaddr *)&source_addr, &addr_len);
         if (sock < 0) {
             ESP_LOGE(TAG, "Unable to accept connection: errno %d", errno);

@@ -28,13 +28,13 @@ class SmartConfig{
         static const int CONNECTED_BIT = BIT0;
         static const int ESPTOUCH_DONE_BIT = BIT1;
         static const int CONNECT_FAILED = BIT2;
+        static void connectWifi();
 
     private:
         static const char *TAG;
 
         static void event_handler(void* arg, esp_event_base_t event_base, int32_t event_id, void* event_data);
         static void smartconfig_example_task(void * parm);
-        static void connectWifi();
 
 
         SmartConfig();

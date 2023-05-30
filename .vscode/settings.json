@@ -1,6 +1,6 @@
 {
     "idf.adapterTargetName": "esp32s2",
-    "idf.portWin": "COM9",
+    "idf.portWin": "COM13",
     "idf.flashType": "UART",
     "files.associations": {
         "xlocale": "c",
@@ -93,7 +93,6 @@
         "*.ipp": "cpp"
     },
     "idf.openOcdConfigs": [
-        "interface/ftdi/esp32_devkitj_v1.cfg",
-        "target/esp32s2.cfg"
+        "board/esp32s2-kaluga-1.cfg"
     ]
 }

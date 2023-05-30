@@ -1,0 +1,2 @@
+Warn : deprecated option: -p/--pipe. Use '-c "gdb_port pipe; log_output openocd.log"' instead.
+Unexpected command line argument: C:\Users\juanp\.espressif\python_env\idf4.4_py3.8_env\Scripts\python.exe

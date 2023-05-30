@@ -107,7 +107,7 @@ extern "C" void app_main(void){
     xTaskCreate(waitForNTPSync, "ntp_sync", 4096, NULL, 5, NULL);
     xEventGroupWaitBits(s_general_event_group, NTP_SYNC_COMPLETE, true, false, portMAX_DELAY); 
 
-    xTaskCreate(TCPReceive, "tcp_server", 4096, NULL, 5, &serverHandle);
+    xTaskCreate(TCPReceive, "tcp_server", 8192, NULL, 5, &serverHandle);
     setupMDNS();
 }
 
@@ -117,7 +117,7 @@ void main_event_handler(void* arg, esp_event_base_t event_base, int32_t event_id
         wifi_event_sta_disconnected_t* disconnect_reason = (wifi_event_sta_disconnected_t*) event_data;
 
         ESP_LOGE(TAG, "disconnect %i", disconnect_reason->reason);
-        esp_wifi_connect();
+        xEventGroupSetBits(s_wifi_event_group, SmartConfig::CONNECT_FAILED);
     } 
 }
 
@@ -137,7 +137,7 @@ static void TCPReceive(void *pvParameters){
                 case tcp.type_time:
                     {
                         setTime = std::stoi(rx_buffer+1);
-                        ESP_LOGI(TAG, "%lu", setTime);
+                        // ESP_LOGI(TAG, "%lu", setTime);
                         tcp.transmit(tcp.type_time, std::to_string(setTime).append("\n").c_str());
                     }
                     break;
@@ -208,23 +208,23 @@ void start_mdns_service(char* hostName){
 
     mdns_hostname_set(hostName);
     
-    esp_read_mac(MACAddress, ESP_MAC_WIFI_STA);
-    snprintf(MAC, sizeof(MAC), "%02x:%02x:%02x:%02x:%02x:%02x",
-         MACAddress[0], MACAddress[1], MACAddress[2], MACAddress[3], MACAddress[4], MACAddress[5]);
+    // esp_read_mac(MACAddress, ESP_MAC_WIFI_STA);
+    // snprintf(MAC, sizeof(MAC), "%02x:%02x:%02x:%02x:%02x:%02x",
+    //      MACAddress[0], MACAddress[1], MACAddress[2], MACAddress[3], MACAddress[4], MACAddress[5]);
 
-    ESP_LOGI(TAG, "TEST %s", MAC);
+    // ESP_LOGI(TAG, "TEST %s", MAC);
 
     mdns_txt_item_t serviceTxtData[3] = {
         //TODO: add unique board id, maybe mac address
         {"ModuleVersion", "ESP32-S2"},
-        {"MACAddress", MAC},
+        // {"MACAddress", MAC},
         // {"hasPassword", },
         // {"isSetup", },
         {"Name", hostName}
     };
 
 
-    ESP_ERROR_CHECK(mdns_service_add(NULL, "_AirconTimer", "_tcp", PORT, serviceTxtData, 3));
+    ESP_ERROR_CHECK(mdns_service_add(NULL, "_AirconTimer", "_tcp", PORT, serviceTxtData, 2));
 }
 
 static void waitForNTPSync(void *pvParameters){    
@@ -233,7 +233,7 @@ static void waitForNTPSync(void *pvParameters){
     sntp_init();
     
     while(time(NULL) < 120){
-        ESP_LOGI(TAG, "Time now : %lu", time(NULL));
+        // ESP_LOGI(TAG, "Time now : %lu", time(NULL));
         vTaskDelay(100);
     }
 
@@ -260,7 +260,7 @@ void setupMDNS(){
     }
     else{
         // Wait for bit for tcp server start and setupmode to be set using eventGroupWaitBits
-        ESP_LOGE(TAG, "NVSTORE HAS VALUE");
+        ESP_LOGE(TAG, "NVSTORE HAS VALUE: %s", StoredName.c_str());
         xEventGroupSetBits(s_general_event_group, MDNS_NAME_SET);
     }
 
