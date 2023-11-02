@@ -15,7 +15,7 @@ class TCPServer{
         TCPServer(int Port, void *PvParameters);
 
         enum TCP_Types{
-            null, type_time, type_mDNS_Name, type_status
+            null, type_time, type_mDNS_Name, type_status, type_setNTP
         };
 
         TaskHandle_t &start(TaskHandle_t &serverHandle);

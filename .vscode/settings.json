@@ -1,6 +1,6 @@
 {
     "idf.adapterTargetName": "esp32s2",
-    "idf.portWin": "COM13",
+    "idf.portWin": "COM6",
     "idf.flashType": "UART",
     "files.associations": {
         "xlocale": "c",
@@ -90,9 +90,18 @@
         "memory_resource": "cpp",
         "string_view": "cpp",
         "cinttypes": "cpp",
-        "*.ipp": "cpp"
+        "*.ipp": "cpp",
+        "bitset": "cpp",
+        "format": "cpp",
+        "forward_list": "cpp",
+        "numbers": "cpp",
+        "ranges": "cpp",
+        "regex": "cpp",
+        "semaphore": "cpp",
+        "span": "cpp",
+        "stack": "cpp"
     },
     "idf.openOcdConfigs": [
-        "board/esp32s2-kaluga-1.cfg"
+        "board/esp32s2-bridge.cfg"
     ]
 }

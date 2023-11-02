@@ -15,8 +15,7 @@ SmartConfig::SmartConfig(){
     assert(sta_netif && "sta_netif assert false"); //assert terminates application on false 
 
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
-
-    ESP_ERROR_CHECK( esp_wifi_init(&cfg) );
+    ESP_ERROR_CHECK(esp_wifi_init(&cfg));
     ESP_ERROR_CHECK( esp_wifi_set_mode(WIFI_MODE_STA));
 
     
@@ -26,7 +25,7 @@ SmartConfig::SmartConfig(){
         ESP_LOGI(TAG, "\nSSID :%s\n", conf.sta.ssid);
         ESP_LOGI(TAG, "\nPassword :%s\n", conf.sta.password);
     }
-    else if(conf.sta.ssid != nullptr && conf.sta.ssid[0] == '\0'){
+    else if(conf.sta.ssid[0] == '\0'){
         ESP_LOGE(TAG, "\nSSID is blank");
     }
 
@@ -101,7 +100,7 @@ void SmartConfig::smartconfig_example_task(void * parm){
 void SmartConfig::event_handler(void* arg, esp_event_base_t event_base, int32_t event_id, void* event_data){
     ESP_LOGI(TAG, "\nEVENT BASE : %s\nEVENT ID : %lu",event_base, event_id);
     if ((event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_START)) {
-        if(conf.sta.ssid != nullptr && conf.sta.ssid[0] == '\0')
+        if(conf.sta.ssid[0] == '\0')
             xTaskCreate(smartconfig_example_task, "smartconfig_example_task", 4096, NULL, 3, NULL);
         else{
             connectWifi();

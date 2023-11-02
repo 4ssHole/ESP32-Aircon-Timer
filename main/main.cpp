@@ -67,6 +67,8 @@ static const int NVS_VALUE_setupMode = 0;
 static const char *NVS_KEY_DeviceName = "DeviceName";
 static const char *NVS_VALUE_DeviceName = "DefaultName";
 
+time_t now;
+
 static time_t setTime = 0;
 static bool relayOn = false;
 
@@ -85,7 +87,7 @@ void setMDNSName(std::string recievedName);
 void setupMDNS();
 void start_mdns_service(char* hostName);
 
-static void waitForNTPSync(void *pvParameters);   
+void setNTP(std::string recievedTime);
 static void checkTime(void *pvParameters);
 const char* bool_cast(const bool b);
 static void TCPReceive(void *pvParameters);
@@ -104,8 +106,10 @@ extern "C" void app_main(void){
     esp_event_handler_register(WIFI_EVENT, ESP_EVENT_ANY_ID, &main_event_handler, NULL);
     esp_event_handler_register(IP_EVENT, IP_EVENT_STA_GOT_IP, &main_event_handler, NULL);
 
-    xTaskCreate(waitForNTPSync, "ntp_sync", 4096, NULL, 5, NULL);
-    xEventGroupWaitBits(s_general_event_group, NTP_SYNC_COMPLETE, true, false, portMAX_DELAY); 
+    xTaskCreate(checkTime, "time_check", 4096, NULL, 5, NULL);
+
+    // xTaskCreate(waitForNTPSync, "ntp_sync", 4096, NULL, 5, NULL);
+    // xEventGroupWaitBits(s_general_event_group, NTP_SYNC_COMPLETE, true, false, portMAX_DELAY); 
 
     xTaskCreate(TCPReceive, "tcp_server", 8192, NULL, 5, &serverHandle);
     setupMDNS();
@@ -150,6 +154,24 @@ static void TCPReceive(void *pvParameters){
                     ESP_LOGI(TAG, "SENDING STATUS");
                     tcp.transmit(tcp.type_status, ((relayOn ? "1" : "0") + (std::to_string(setTime) + "\n")).c_str());
                     break;
+                case tcp.type_setNTP:
+                    ESP_LOGI(TAG, "SET NTP");
+                    setNTP(rx_buffer+1);
+
+                    char strftime_buf[64];
+                    struct tm timeinfo;
+
+                    time(&now);
+                    // Set timezone to China Standard Time
+                    setenv("TZ", "CST-8", 1);
+                    tzset();
+
+                    localtime_r(&now, &timeinfo);
+                    strftime(strftime_buf, sizeof(strftime_buf), "%c\n", &timeinfo);
+                    ESP_LOGI(TAG, "The current date/time in Shanghai is: %s", strftime_buf);
+
+                    tcp.transmit(tcp.type_setNTP, strftime_buf);
+                    break;
                 default:
                     tcp.transmit(tcp.null, "Unknown message type\n");
                     break;
@@ -178,7 +200,7 @@ static void checkTime(void *pvParameters){
     time_t timeNow;
     
     while(1){
-        timeNow = time(NULL);
+        timeNow = time(&now);;
         relayOn = gpio_get_level(relayPin);
 
         if( ( timeNow < setTime ) && ( !relayOn ) ){
@@ -227,22 +249,15 @@ void start_mdns_service(char* hostName){
     ESP_ERROR_CHECK(mdns_service_add(NULL, "_AirconTimer", "_tcp", PORT, serviceTxtData, 2));
 }
 
-static void waitForNTPSync(void *pvParameters){    
-    sntp_setoperatingmode(SNTP_OPMODE_POLL);
-    sntp_setservername(0, "pool.ntp.org");
-    sntp_init();
-    
-    while(time(NULL) < 120){
-        // ESP_LOGI(TAG, "Time now : %lu", time(NULL));
-        vTaskDelay(100);
-    }
+void setNTP(std::string recievedTime){
+    struct timeval tv;
 
-    ESP_LOGW(TAG, "NTP SYNC COMPLETE");
-    xTaskCreate(checkTime, "time_check", 4096, NULL, 5, NULL);
+    tv.tv_sec = std::stoi(recievedTime);
+    tv.tv_usec = 0;
 
-    xEventGroupSetBits(s_general_event_group, NTP_SYNC_COMPLETE);
-    vTaskDelete(NULL);
-} 
+    settimeofday(&tv,NULL);
+}    
+
 
 void setMDNSName(std::string recievedName){
     ESP_LOGI(TAG, "MDNS Name set to : %s", recievedName.c_str());
