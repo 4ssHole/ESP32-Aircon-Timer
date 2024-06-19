@@ -43,7 +43,6 @@ Sending epoch to client
 #include "mdns.h"
 
 #include "esp_smartconfig.h"
-#include "esp_wpa2.h"
 #include "freertos/event_groups.h"
 
 #include "SmartConfig.hpp"
